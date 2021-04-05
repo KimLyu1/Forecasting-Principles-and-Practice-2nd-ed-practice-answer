@@ -1,0 +1,332 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+# 1.对于下列时间序列数据，寻找合适的Box-Cox变换使其方差稳定。
+```{r}
+# usnetelec
+autoplot(BoxCox(usnetelec,BoxCox.lambda(usnetelec)))  #  0.5167714
+
+# usgdp
+autoplot(BoxCox(usgdp,BoxCox.lambda(usgdp)))    #  0.366352
+
+# mcopper
+autoplot(BoxCox(mcopper,BoxCox.lambda(mcopper)))  #  0.1919047
+
+# enplanements
+autoplot(BoxCox(enplanements,BoxCox.lambda(enplanements))) #  -0.2269461
+```
+# 2.为什么Box-Cox变换不适用于cangas数据集？
+```{r}
+autoplot(cangas)
+autoplot(BoxCox(cangas,BoxCox.lambda(cangas)))    # 可以看到Box-Cox转换不会产生更简单的模型
+```
+# 3.对于2.10节练习3的零售数据你会选择哪种Box-Cox变换？
+```{r}
+retaildata <- readxl::read_excel("D:/Chrome Download/retail.xlsx", skip=1)
+myts <- ts(retaildata[,"A3349873A"], frequency=12, start=c(1982,4))
+
+# 找最合适的lambda值
+BoxCox.lambda(myts)
+
+# 运用boxcox变换的图
+autoplot(myts)
+autoplot(BoxCox(myts,BoxCox.lambda(myts)))  # 方差减小了
+
+# 简单逆变换和偏差调整的对比
+fc_retail <- rwf(myts, drift=TRUE, lambda=0, h=50, level=80)
+fc2_retail <- rwf(myts, drift=TRUE, lambda=0, h=50, level=80, biasadj=TRUE)
+
+autoplot(myts) +
+  autolayer(fc_retail, series="简单逆变换") +
+  autolayer(fc2_retail$mean, series="偏差调整") +
+  guides(colour=guide_legend(title="预测"))          # 用偏差调整的方法效果更好
+```
+# 4.下列的时间序列，绘制数据图表，如果有合适的变换，进行变换并描述变换效果。dole, usdeaths, bricksq.
+```{r}
+# dole
+autoplot(dole)
+autoplot(BoxCox(dole, BoxCox.lambda(dole)))    # 使用BoxCox变换能够使趋势看的更明显
+
+# usdeaths
+autoplot(usdeaths)
+autoplot(BoxCox(usdeaths, BoxCox.lambda(usdeaths)))     # BoxCox变换没有太大帮助
+
+# bricksq
+autoplot(bricksq)
+autoplot(BoxCox(bricksq, BoxCox.lambda(bricksq)))     # BoxCox变换没有太大帮助
+```
+# 5.计算将周期性naïve方法应用于季度美国啤酒产量数据的预测结果的残差，下面的代码会帮到你
+```{r}
+beer <- window(ausbeer, start=1992)
+fc_beer <- snaive(beer)
+autoplot(fc_beer)
+res <- residuals(fc_beer)
+autoplot(res)
+
+# 检验残差是否是白噪声并且服从正态分布
+checkresiduals(fc_beer)    
+# 滞后为4时有明显的尖峰，同时Ljung-Box test的p值有意义，因此该残差不应是白噪声。同时，直方图显示，并不是正态分布的
+```
+#  6.重复数据集WWWusage和bricksq的练习，在每个数据集中，使用naïve方法还是周期性naïve方法更合适？
+```{r}
+# WWWusage
+## navie
+fc_usage <- naive(WWWusage)
+autoplot(fc_usage)
+res_usage <- residuals(fc_usage)
+autoplot(res_usage)
+checkresiduals(fc_usage)
+
+## snavie
+fc_usage_sn <- snaive(WWWusage)
+autoplot(fc_usage_sn)
+res_usage_sn <- residuals(fc_usage_sn)
+autoplot(res_usage_sn)
+checkresiduals(fc_usage_sn)
+
+# 以上两种方法，其残差ACF图多数自相关系数都大于阈值，且Ljung-Box test的p值均有意义，证明它们的残差都不是白噪声。另外，残差分布都不是正态分布。
+# 如果一定要选一个方法，我认为navie更好。因为原始数据中，并没有特别强的季节性，周期性，并且它们残差的Ljung-Box test的Q值相等
+
+# bricksq
+## navie
+fc_brick <- naive(bricksq)
+autoplot(fc_brick)
+res_brick <- residuals(fc_brick)
+autoplot(res_brick)
+checkresiduals(fc_brick)
+
+## snavie
+fc_brick_sn <- snaive(bricksq)
+autoplot(fc_brick_sn)
+res_brick_sn <- residuals(fc_brick_sn)
+autoplot(res_brick_sn)
+checkresiduals(fc_brick_sn)
+
+# 以上两种方法，其残差ACF图多数自相关系数都大于阈值，且Ljung-Box test的p值均有意义，证明它们的残差都不是白噪声。另外，残差分布都不是正态分布。
+# 如果一定要选一个方法，我认为snavie更好。因为原始数据具有趋势性与周期性，同时其残差的ACF图也显示有周期性。并且，snavie方法中Ljung-Box test的Q值更小一些。
+```
+# 7.下列的描述正确还是错误？并解释。
+```{r}
+# a.良好的预测方法的残差应该服从正态分布
+# - 残差服从正态分布固然是好，但一个良好的预测方法不强制要求残差是正态分布的。
+
+# b.模型残差小，预测结果就好
+# - 残差的大小对一个良好的预测方法来说无关紧要，但是残差需要是不相关且均值为0。因此，残差小不意味着预测结果好。
+
+# c.模型准确度最好的判断标准是MAPE
+# - 判断模型准确度没有统一的标准，判断方法和标准因不同案例而不同。
+
+# d.如果你的模型预测效果不好，你应该让它变得更复杂
+# - 不一定，因为复杂的模型不一定表现的更好。
+
+# e.总是选择在测试集上具有最高精确度的模型
+# - 光考虑精确度来判断一个模型的表现是片面的，还需要看其残差均值是否为0，以及残差是否互不相关，不相关才是好的。
+```
+# 8. 2.10节的练习3 中的零售数据序列，完成以下步骤:
+```{r}
+# a. 使用下面的代码把数据分为两部分
+myts.train <- window(myts, end=c(2010,12))
+myts.test <- window(myts, start=2011)
+
+# b.利用下面的代码画图，检验数据是否被恰当地分为两部分
+autoplot(myts) +
+autolayer(myts.train, series="Training") +
+autolayer(myts.test, series="Test")
+
+# c.在数据myts.train上使用snaïve计算预测值
+fc_myts_sn <- snaive(myts.train)
+
+# d.利用myts.test中的真实值计算模型精确度
+accuracy(fc_myts_sn,myts.test)
+
+# e.检验残差, 残差是否看起来不相关并且服从正态分布？
+checkresiduals(fc_myts_sn)   # 残差看起来是相关的，且不是正态分布。可以看到分布图的右尾比较长。
+
+# f.模型精确度对训练集/测试集分割的敏感性有多强
+# 就accuracy函数的输出来看，不同的误差参数有着不同的敏感性。其中ME，RMSE，MAE，MPE，MAPE具有较高敏感性。可以看到训练集与测试集，它们的比率都十分大，但MASE和ACF1似乎受训练集/测试集分割的影响不大。
+```
+# 9.visnights 包含从1998-2015年澳大利亚20个区域每个季度的夜间游客人数（单位：百万）
+```{r}
+# a.对visnights[,"QLDMetro"]数据使用window()创建3个训练集，分别去掉最后1年、2年、3年的数据，并各自命名为train1、train2、train3，例如 train1 <- window(visnights[, "QLDMetro"], end = c(2014, 4)).
+str(visnights[,"QLDMetro"])
+train1 <- window(visnights[,"QLDMetro"], end = 2016)
+train2 <- window(visnights[,"QLDMetro"], end = 2015)
+train3 <- window(visnights[,"QLDMetro"], end = 2014)
+
+# b.使用snaïve方法分别为每个训练集计算一年的预测，并命名为fc1、fc2、fc3
+fc1 <- snaive(train1)
+fc2 <- snaive(train2)
+fc3 <- snaive(train3)
+
+# c.使用 accuracy() 在三个测试集中比较MAPE，你如何看待测试结果？
+test1 <- window(visnights[,"QLDMetro"], start = 2016, end = 2017)
+test2 <- window(visnights[,"QLDMetro"], start = 2015, end = 2016)
+test3 <- window(visnights[,"QLDMetro"], start = 2014, end = 2015)
+
+accuracy(fc1,test1)
+accuracy(fc2,test2)
+accuracy(fc3,test3)
+# 在预测2015年的模型的MAPE的值最小，其次是预测2016年和2014年的.
+```
+# 10.使用数据集dowjones中的道琼斯指数数据完成下列步骤
+```{r}
+# a.画出序列的时间散点图(无法画散点图，可能是书籍翻译错误)
+autoplot(dowjones)
+
+# b.使用趋势法进行预测并画出结果图像
+dj <- rwf(dowjones, drift = TRUE)
+autoplot(dj)
+
+# c.观察预测值是否等于把第一个和最后一个观测点用直线连接起来并延伸后得到的值
+str(dowjones)
+
+dj_x <- c(1, 78)
+dj_y <- c(dowjones[1], dowjones[78])
+lm_dj <- lm(dj_y ~ dj_x)
+
+summary(lm_dj)
+autoplot(dj) + geom_abline(intercept = lm_dj$coefficients[1], slope = lm_dj$coefficients[2])
+
+# 是重叠的，没错。
+
+# d.尝试使用其他的基准方法在该数据集上做预测，那个方法你认为最好？为什么？
+checkresiduals(dj)
+
+dj_n <- naive(dowjones)
+dj_sn <- snaive(dowjones)
+dj_m <- meanf(dowjones)
+
+autoplot(dowjones) +
+  autolayer(dj_m, PI=FALSE, series="均值") +
+  autolayer(dj_n, PI=FALSE, series="Naïve") +
+  autolayer(dj_sn, PI=FALSE, series="Season Naïve") +
+  autolayer(dj, PI=FALSE, series="漂移")
+
+# 我认为drift或者naive都可以。但是如果追求稳健的话，naive方法会更好。因为股价不是那么容易预测的，用最后一个观测值的值会保险一些。
+```
+# 11.使用数据集ibmclose中的IBM的每日股票收盘价数据，完成以下步骤：
+```{r}
+# a.绘制一些描述数据的图像
+autoplot(ibmclose)
+
+# b.将数据分为有300个观测的训练集和69个观测的测试集
+str(ibmclose)
+
+train_ibm <- window(ibmclose, start = 1, end = 300)
+test_ibm <- window(ibmclose, start = 301, end = 369)
+
+# c.尝试使用不同的基准预测方法在训练集上进行预测，在测试集上比较结果，哪种方法效果最好？
+ibm_drift <- rwf(train_ibm, drift = TRUE, h = 69)
+ibm_drift_badj <- rwf(train_ibm, drift = TRUE, biasadj=TRUE, h = 69)
+ibm_n <- naive(train_ibm, h = 69)
+ibm_sn <- snaive(train_ibm, h = 69)
+ibm_m <- meanf(train_ibm, h = 69)
+
+autoplot(ibmclose) +
+  autolayer(ibm_m, PI=FALSE, series="均值") +
+  autolayer(ibm_n, PI=FALSE, series="Naïve") +
+  autolayer(ibm_sn, PI=FALSE, series="Season Naïve") +
+  autolayer(ibm_drift, PI=FALSE, series="漂移") +
+  autolayer(ibm_drift_badj, PI=FALSE, series="偏差修正")
+
+e_snaive_ibm <- test_ibm - ibm_sn$mean
+e_naive_ibm <- test_ibm - ibm_n$mean
+e_drift_ibm <- test_ibm - ibm_drift$mean
+e_mean_ibm <- test_ibm - ibm_m$mean
+e_drift_badj_ibm <- test_ibm - ibm_drift_badj$mean
+
+autoplot(e_snaive_ibm^2, series = "snaive method") +
+  autolayer(e_naive_ibm^2, series = "naive method") +
+  autolayer(e_drift_ibm^2, series = "drift method") +
+  autolayer(e_mean_ibm^2, series = "mean method") +
+  autolayer(e_drift_badj_ibm^2, series = "drift bias adjust method") +
+  guides(colour = guide_legend(title = "Forecast")) +
+  ggtitle("Errors of the forecast of closing IBM stock price") +
+  ylab(expression(paste("erro", r^{2})))
+
+
+# 经过比较，偏差修正、seasonal navie、navie的方法或许更好。
+
+
+e_drift_ibm_CV <- tsCV(ibmclose, rwf, drift=TRUE, h=69)
+e_drift_badj_ibm_CV <- tsCV(ibmclose, rwf, drift=TRUE, h=69, biasadj = TRUE)
+e_naive_ibm_CV <- tsCV(ibmclose, naive, h=69)
+e_snaive_ibm_CV <- tsCV(ibmclose, snaive, h=69)
+e_mean_ibm_CV <- tsCV(ibmclose, meanf, h=69)
+
+MSE_navie <- colMeans(e_naive_ibm_CV^2, na.rm = T)
+MSE_snavie <- colMeans(e_snaive_ibm_CV^2, na.rm = T)
+MSE_meanf <- colMeans(e_mean_ibm_CV^2, na.rm = T)
+MSE_drift_badj <- colMeans(e_drift_badj_ibm_CV^2, na.rm = T)
+MSE_drift <- colMeans(e_drift_ibm_CV^2, na.rm = T)
+
+data.frame(h = 1:69, MSE = MSE_navie) %>%
+  ggplot(aes(x = h, y = MSE)) + geom_point()
+data.frame(h = 1:69, MSE = MSE_snavie) %>%
+  ggplot(aes(x = h, y = MSE)) + geom_point()
+data.frame(h = 1:69, MSE = MSE_drift) %>%
+  ggplot(aes(x = h, y = MSE)) + geom_point()
+data.frame(h = 1:69, MSE = MSE_drift_badj) %>%
+  ggplot(aes(x = h, y = MSE)) + geom_point()
+data.frame(h = 1:69, MSE = MSE_meanf) %>%
+  ggplot(aes(x = h, y = MSE)) + geom_point()
+
+# 预测误差会随着预测区间的增大而增大。
+
+# d.检验你认为最好的方法的残差，它们像白噪声吗？
+checkresiduals(ibm_drift_badj)
+checkresiduals(ibm_n)
+# 都不是白噪声 
+```
+
+# 12.使用数据集hsales中1973年1月-1995年12月美国新独户住宅销量数据，完成以下步骤:
+```{r}
+# a. 绘制一些描述数据的图像
+autoplot(hsales)    # 季节性、周期性、趋势
+ggseasonplot(hsales)
+ggsubseriesplot(hsales)
+ggAcf(hsales)
+
+# b. 将`hsales`数据集分割成训练集和数据集，测试集是最近两年的数据
+str(hsales)
+
+train_hsales <- window(hsales, end = 1994)
+test_hsales <- window(hsales, start = 1994)
+
+# c. 尝试使用不同的基准预测方法在训练集上进行预测，在测试集上比较结果，哪种方法效果最好？
+hsales_drift <- rwf(train_hsales, h = 24, drift = TRUE)
+hsales_naive <- naive(train_hsales, h = 24)
+hsales_snaive <- snaive(train_hsales, h = 24)
+hsales_meanf <- meanf(train_hsales, h = 24)
+
+autoplot(hsales) +
+  autolayer(hsales_meanf, PI=FALSE, series="均值") +
+  autolayer(hsales_naive, PI=FALSE, series="Naïve") +
+  autolayer(hsales_snaive, PI=FALSE, series="Season Naïve") +
+  autolayer(hsales_drift, PI=FALSE, series="漂移")
+
+e_hsales_snaive <- test_hsales - hsales_snaive$mean
+e_hsales_naive <- test_hsales - hsales_naive$mean
+e_hsales_drift <- test_hsales - hsales_drift$mean
+e_hsales_meanf <- test_hsales - hsales_meanf$mean
+
+
+autoplot(e_hsales_snaive^2, series = "snaive method") +
+  autolayer(e_hsales_naive^2, series = "naive method") +
+  autolayer(e_hsales_drift^2, series = "drift method") +
+  autolayer(e_hsales_meanf^2, series = "mean method") +
+  guides(colour = guide_legend(title = "Forecast")) +
+  ggtitle("Errors of the forecast of closing IBM stock price") +
+  ylab(expression(paste("erro", r^{2})))
+
+# seasonal naive方法是最好的。
+
+# d. 检验你认为最好的方法的残差，它们像白噪声吗？
+checkresiduals(hsales_snaive)    # 不是白噪声
+```
