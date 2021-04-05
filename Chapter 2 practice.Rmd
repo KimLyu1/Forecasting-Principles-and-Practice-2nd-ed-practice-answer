@@ -1,0 +1,202 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code.
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*.
+
+# 1.使用帮助函数了解gold、woolyrnq和gas时间序列
+
+```{r}
+library(fpp2)
+
+help(gold)
+help(woolyrnq)
+help(gas)
+
+# a.使用autoplot()分别绘制上述序列。
+autoplot(gold)
+autoplot(woolyrnq)
+autoplot(gas)
+
+# b.各个序列的频率是多少？ 提示：运用frequency()函数。
+frequency(gold)    # year
+frequency(woolyrnq)   # quarter
+frequency(gas)     # month
+
+# c.使用which.max()函数找出gold序列的离群点。它是哪个观测点？
+which.max(gold)    # point 770
+```
+
+# 2.从 OTexts.org/fpp2/extrafiles/tute1.csv 上下载文件tute1.csv，打开并查看内容。从B列到D列，是三组季度性序列。分别标记为：Sales、AdBudget 和 GDP。Sales是1981年至2005年期间小型公司的季度销售额。 AdBudget 是广告预算，GDP是国内生产总值。三组时间序列均已经剔除了通货膨胀的影响。
+
+```{r}
+# a.首先将数据读入R中,并初步观察数据形态：
+tute1 <- read.csv("D:/Chrome Download/tute1.csv", header=TRUE)
+View(tute1)
+
+# b.将数据转化为时间序列
+mytimeseries <- ts(tute1[,-1], start=1981, frequency=4)
+
+# c.画出每个序列的时间序列图
+autoplot(mytimeseries, facets=TRUE)
+```
+
+# 3.从 OTexts.org/fpp2/extrafiles/retail.xlsx下载澳大利亚月度零售数据。这些代表不同澳大利亚各州的不同类别的零售额，并存储在MS-Excel文件中。
+
+```{r}
+# a.首先将数据读入R中：
+retaildata <- readxl::read_excel("D:/Chrome Download/retail.xlsx", skip=1)
+
+# b.选择其中的一个时间序列：
+myts <- ts(retaildata[,"A3349873A"], frequency=12, start=c(1982,4))
+
+# c.使用下列函数观察时间序列：
+autoplot(myts)  # 时间序列可视化图   -- 趋势性  -- 季节性
+ggseasonplot(myts)  # 季节性图         -- 可以看到每年的十月至十二月，该类别的销售额都会增加
+ggsubseriesplot(myts)  # 子系列季节图   -- 每年的十月至十二月都会有季节性增幅
+gglagplot(myts)   # 滞后图             -- 滞后十二阶具有非常强的正相关性，说明数据具有很强的季节性
+ggAcf(myts)    # ACF图   -- 其中有季节性变化，同时随着滞后阶数增加而略微下降是因为原时间序列具有趋势性
+```
+
+# 4.画出以下时间序列的时间序列图：bicoal, chicken, dole, usdeaths, lynx, goog, writing, fancy, a10, h02。
+
+```{r}
+# a.使用help()函数找出每个时间序列的数据。
+help(bicoal)  # 煤炭年度产量
+help(chicken)  # 鸡肉价格
+help(dole)  # 澳大利亚每月领取失业救济金的人数
+help(usdeaths)  # 美国每月意外死亡人数
+help(lynx)  # 加拿大西北部麦肯齐河地区被捕的天猫（一种野猫）数量
+help(goog)   # Google Inc的每日收盘价
+help(writing) # 印刷和书写纸的行业销售（千/法国法郎）
+help(fancy) # 澳大利亚昆士兰州海滩度假小镇码头上一家纪念品商店的月销售额。
+help(a10)  # 1991年至2008年，澳大利亚每月提供抗糖尿病药物补贴。
+help(h02)   # 1991年至2008年，澳大利亚每月提供皮质类固醇药物补贴。
+
+# b.在goog的时间序列图上，修改坐标轴名称和标题。
+autoplot(goog, main = "Daily closing stock prices of Google Inc", xlab = 'Days', ylab = "Closing prices")
+```
+
+# 5. 使用ggseasonplot()函数和ggsubseriesplot()函数来观察writing、 fancy、 a10和 h02四个序列的季节性特征。
+
+```{r}
+# writing
+ggseasonplot(writing)  # 每年七月至八月销售额都会下降，但八月至九月又会恢复到七月的同一水平上 （可能是因为八月学生都在放假）
+ggsubseriesplot(writing) # 一至三月上升，三至五月下降
+
+# fancy
+ggseasonplot(fancy)   # 每年的十至十二月销售额都会上升，其中十一月至十二月上升迅猛
+ggsubseriesplot(fancy)  # 同上
+
+# a10
+ggseasonplot(a10)    # 每年的一月至二月补贴都会减少
+ggsubseriesplot(a10)  # 同上
+
+# h02
+ggseasonplot(h02)    # 每年的一月至二月补贴都会减少
+ggsubseriesplot(h02)  # 但三月至十二月都会上升
+
+# a.你对时间序列的季节性有什么认识？
+# A: 就如上面所说的就是对季节性的认识
+
+# b.你可以识别出异常的年份吗？
+# 其中a10的2008年似乎是异常的，数据并不完整，h02的1991年也是如此
+
+```
+
+# 6.使用autoplot()、 ggseasonplot()、 ggsubseriesplot()、 gglagplot()和 ggAcf()这些画图函数，探索序列hsales、 usdeaths、 bricksq、 sunspotarea和 gasoline的特征。
+
+```{r}
+help(hsales)   # 自1973年以来在美国销售的新的独栋房屋的月度销售。
+help(usdeaths) # 
+help(bricksq)  # 澳大利亚季度粘土砖产量：1956年至1994年。
+help(sunspotarea)  # 年平均黑子面积（1875-2015）
+help(gasoline)  # US finished motor gasoline product supplied. 从1991年2月2日开始，到2017年1月20日结束的每周数据。单位是“每天百万桶”。
+
+# hsales
+autoplot(hsales)   # 每六至七年有个周期性
+ggseasonplot(hsales)  # 有季节性。每年一至三月都会上升，十至十二月都会下降
+ggsubseriesplot(hsales)  # 更好的反应以上结论
+gglagplot(hsales)  # 滞后一阶时有很强正相关性，说明数据具有很强季节性
+ggAcf(hsales)  # 随之滞后阶数增大，自相关系数缓慢降低，说明原数据有趋势变化，而锯齿状说明原数据中有季节性变化
+
+# usdeaths
+autoplot(usdeaths)   # 可以看到很强的周期性
+ggseasonplot(usdeaths)  # 四月至七月似乎是高发时段，七月至九月死亡人数又会下降
+ggsubseriesplot(usdeaths)   # 同上
+gglagplot(usdeaths)   # 滞后十二阶时有很强正相关性，说明数据具有很强季节性
+ggAcf(usdeaths)   # 说明了很强的周期性
+
+# bricksq
+autoplot(bricksq)   # 趋势性，随着时间增加，产量逐渐变大，但其中1975年和1983年有个断崖式下降
+ggseasonplot(bricksq)   # 趋势性，每年的产量总会比上一年的高
+ggsubseriesplot(bricksq)  # 同上
+gglagplot(bricksq)  # 滞后一阶时有很强正相关性，说明数据具有很强季节性
+ggAcf(bricksq)          # 随之滞后阶数增大，自相关系数缓慢降低，说明原数据有趋势变化，而锯齿状说明原数据中有季节性变化
+
+# sunspotarea
+autoplot(sunspotarea)   # 具有一个周期性
+#ggseasonplot(sunspotarea)  # 不具备季节，频率为1
+#ggsubseriesplot(sunspotarea)  # 不具备季节，频率为1
+gglagplot(sunspotarea)  # lag5和lag6反应了最高点与最低点
+ggAcf(sunspotarea)   # 实际上是有周期性的
+
+# gasoline
+autoplot(gasoline)   # 可以看到趋势性
+ggseasonplot(gasoline)   
+# ggsubseriesplot(gasoline)  # 每个季节至少需要2次观察。 这可能是由于指定了非整数频率的时间序列引起的。
+gglagplot(gasoline) # 每个滞后阶数都反应了季节性
+ggAcf(gasoline)  # 有季节性，也存在一定的趋势变化
+```
+
+# 7.arrivals数据包括从日本、新西兰、英国和美国到达澳大利亚的人数（千）。
+
+```{r}
+# --使用autoplot()、ggseasonplot()和ggsubseriesplot()函数比较四个国家到达澳大利亚人数的不同之处。
+# --你可以找出异常观测点吗？
+
+autoplot(arrivals)   # 趋势性，逐年增加了客流量
+
+ggseasonplot(arrivals[, 'Japan'])   # 第二至第三季度从日本出发的旅客增加了，但其余时间时减少的
+ggseasonplot(arrivals[, 'NZ'])   # 第一至第三季度从新西兰出发的旅客增加了，但其余时间时减少的
+ggseasonplot(arrivals[, 'UK'])  # 第一至第三季度从英国出发的旅客减少了，第三至第四季度增加
+ggseasonplot(arrivals[, 'US'])  # 只有第一至第二季度减少
+
+ggsubseriesplot(arrivals[, 'Japan'])
+ggsubseriesplot(arrivals[, 'NZ'])
+ggsubseriesplot(arrivals[, 'UK'])
+ggsubseriesplot(arrivals[, 'US'])
+```
+
+# 8.下列时间序列图和ACF图分别对应四个不同的时间序列。你的任务是将第一行的时间序列图和第二行的ACF图分别对应。
+Visual markdown 模式下可以看到下面的图：
+![Campare](https://otexts.com/fppcn/fpp_files/figure-html/acfguess-1.png)
+```{r}
+# 3 - D
+# 2 - A
+# 1 - B
+# 4 - C
+```
+
+# 9.数据集pigs是从1980年1月到1995年8月，维多利亚州每月屠宰猪的总量。使用mypigs \<- window(pigs, start=1990)截取1990年之后的数据。运用autoplot和ggAcf函数分别画出mypigs及其ACF图，并将其结果与白噪声的结果（如图 2.17 和 2.18 所示）进行比较。
+
+![Fig 2.17 White Noise Time Series](https://www.otexts.org/fpp2/fpp_files/figure-html/wnoise-1.png)
+![Fig 2.18 ACF of White Noise Time Series](https://www.otexts.org/fpp2/fpp_files/figure-html/wnoiseacf-1.png)
+
+```{r}
+mypigs <- window(pigs, start=1990)
+autoplot(mypigs)
+ggAcf(mypigs)  # 图中有三个自相关系数值超过了阈值，因此mypigs可能不是白噪声序列
+```
+# 10.数据集dj包含了连续292个交易日的道琼斯指数。采用ddj <- diff(dj)来计算道琼斯指数的日变化量。画出ddj和它的ACF图。道琼斯指数的日变化类似一个白噪声吗？
+```{r}
+ddj <- diff(dj)
+autoplot(ddj)
+ggAcf(ddj)  # 有一个自相关系数值超过了阈值，严格意义上来说不是一个白噪声。
+            # 但另一种说法是：基本上不到5％的自相关值超出了范围。 因此ddj可以是白噪声。
+            # 因此可以判断，该时间序列可以为白噪声
+```
+
