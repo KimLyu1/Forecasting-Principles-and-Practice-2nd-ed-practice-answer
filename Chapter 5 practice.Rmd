@@ -1,0 +1,429 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+# 1.2014年澳大利亚维多利亚州的每日耗电量包含在 elecdaily 中。前20天的日度耗电量数据可以通过如下方式获得。
+```{r message=FALSE}
+library(fpp2)
+library(TSstudio)
+daily20 <- head(elecdaily, 20)
+str(daily20)
+
+# a. 绘制上述数据的时序图并将温度作为解释变量对日度耗电量建模。为什么是它们之间是正向相关关系？
+autoplot(daily20, facets=TRUE)
+elecdaily_lm <- tslm(Demand~Temperature, data = daily20)
+cor(daily20[, 'Demand'], daily20[, 'Temperature'])
+
+daily20 %>% data.frame() %>% ggplot(aes(x = Temperature, y = Demand)) + ggtitle("温度与耗电量的关系") + geom_point() + xlab("气温") + ylab("用电需求量") + geom_smooth(method = lm, se = FALSE)
+
+# 解释如下：对于中国大陆而言，更高的气温意味着电器的使用次数增加，例如风扇、空调，因此耗电量会增大。因此时序图会有一个尖峰。
+
+# b. 绘制残差图。模型是否充分？是否存在异常值点和强影响点？
+checkresiduals(elecdaily_lm)
+
+# 残差的时序图有明显的异方差性，说明存在异常值，ACF图也显示出其预测区间较大，结果可能不准确，但残差之间无自相关性。另外，直方图显示的分布呈偏态。
+
+# c. 若明日最高温度为15度 ，利用模型预测当天的耗电量。并与最高温度为35度时的预测结果进行比较。你觉得预测结果可信吗？
+fc_elecdaily <- forecast(elecdaily_lm, newdata = data.frame(Temperature=c(15,35)))
+fc_elecdaily
+
+range(daily20[, "Temperature"])
+range(daily20[, "Demand"])
+
+# 有可能是不可信的。因为所预测的温度值为15度，这超出了历史温度的范围，因此持保留态度。而35度时的预测结果可信度较高。
+
+# d. 写出模型预测值的预测区间。以下R代码将帮助你入门：
+# 80%置信度
+fc_elecdaily$lower[, 1]
+fc_elecdaily$upper[, 1]
+# 95%置信度
+fc_elecdaily$lower[, 2]
+fc_elecdaily$upper[, 2]
+
+# 利用 elecdaily 中的所有数据，绘制日度耗电量和温度的关系图。你对你的模型有什么认识？
+ts_info(elecdaily)
+autoplot(elecdaily, facets = TRUE)
+
+elecdaily %>% data.frame() %>% ggplot(aes(x = Temperature, y = Demand)) + ggtitle("温度与耗电量的关系") + geom_point() + xlab("气温") + ylab("用电需求量") + geom_smooth(method = lm, se = FALSE)
+
+# 模型的预测是基于20天的数据建立的，尽管很好的解释了20天的数据，但是对于整体数据来说是不够严谨的。因为在整体数据面前，日度耗电量和温度的相关性非常小。
+```
+# 2.数据集 mens400 中包含了从1896年到2016年间，奥运会男子400米冠军得主的成绩（秒）。
+```{r}
+# a.绘制成绩的时间序列图。描述图中反应出的主要信息。
+autoplot(mens400)  # 数据出现断层，1912年至1920年的数据丢失了，1936至1948年的数据也丢失了。但纵观整体，有一个逐渐下降的趋势。
+
+# b.利用线性模型拟合数据。显然冠军所用时间是随年份下降的，但是每年的平均下降速率是怎样的？
+time_mens400 <- time(mens400)
+mens400_lm <- tslm(mens400 ~ time_mens400, data = mens400)
+mens400_lm
+
+autoplot(mens400) + geom_abline(intercept = mens400_lm$coefficients[1], slope = mens400_lm$coefficients[2], colour = "red")
+
+# 平均下降速率为斜率
+mens400_lm$coefficients[2]  # 平均每年下降0.06秒。
+
+# c.绘制模型的残差图。这表明拟合线是否合适？
+cbind(Time = time_mens400, 
+      Residuals = mens400_lm$residuals) %>%
+  as.data.frame() %>%
+  ggplot(aes(x = Time, y = Residuals)) +
+    geom_point() +
+    ylab("回归模型残差（单位：秒）")
+
+checkresiduals(mens400_lm)
+# 拟合线还算合适，但具有异常值。有略微的自相关性，残差的方差也很稳定。
+
+# d.预测2020年奥运会男子400米冠军得主成绩。并给出预测值的预测区间。在计算中，你都做出了哪些假设？
+fc_mens400 <- forecast(mens400_lm, newdata = data.frame(time_mens400 = 2020))
+fc_mens400
+# 80%置信度
+fc_mens400$lower[, 1]
+fc_mens400$upper[, 1]   # [40.44975, 43.63487] 
+
+# 90%置信度
+fc_mens400$lower[, 2]
+fc_mens400$upper[, 2]   # [39.55286, 44.53176]
+
+min(mens400, na.rm = TRUE)
+max(mens400, na.rm = TRUE)  # [43.03, 54.2]
+
+# 2020年奥运会男子400米冠军得主的最终成绩预测为42.04231秒。所做的假设有：假设残差是正态分布的。因为只有在残差是正态分布的情况下，预测才能更准确，然而从上一节中知道，残差并不是正态分布的。
+```
+# 3.输入 easter(ausbeer) 并解释你所得到的内容。
+```{r}
+easter(ausbeer)
+autoplot(easter(ausbeer), facets = TRUE)
+
+# easter函数返回观察时间段内0或1或小数部分的向量。如果一个时间段内有完整的复活节假期，则返回1，如果没有，则返回0。如果假期从一个时期延伸到另一个时期，复活节函数返回每个假期的小数部分。
+```
+# 5. 数据集 fancy 包含1987年一月开始，礼物、纪念品和新奇商品的销量。该商店位于澳大利亚昆士兰州海滩度假小镇的码头上。销售量随季节性游客人数而变化。圣诞节期间以及自1988年以来每年三月举办的冲浪节都有大量的游客涌入。并且随着时间的推移，商店扩大了其场地，产品范围和员工数量。
+```{r}
+# a.生成数据的时间图并描述图中反应出的特点。识别出时间序列中的异常波动。
+autoplot(fancy)   # 趋势、季节性。每年的圣诞节、3月（较不多）都会有很多游客，随着时间推移，每年的下半年伊始都有大部分游客涌入。但1991年的下半年伊始有略微下降，反观其余年份都是平稳增长的。（异常波动）
+
+# b.解释为什么在拟合模型之前需对数据进行对数变换处理。
+ts_info(fancy)
+# 因为其销售量与时间有季节性变化，而这个变化似乎是指数上升的，因此有必要对数据进行对数变换。
+
+# c.使用R将回归模型拟合销售数据的对数值，并采用线性趋势，季节性虚拟变量和“冲浪节”虚拟变量。
+# 制作”冲浪节“虚拟变量
+Time_fancy <- time(fancy)
+surfing_festival <- c()
+for(i in 1:length(Time_fancy)){
+  month <- round(12*(Time_fancy[i] - floor(Time_fancy[i]))) + 1
+  year <- floor(Time_fancy[i])
+  if(year >= 1988 & month == 3){
+    surfing_festival[i] <- 1
+  } else {
+    surfing_festival[i] <- 0
+  }
+}
+
+fancy_lm <- tslm(BoxCox(fancy, 0) ~ trend + season + surfing_festival)
+fancy_lm
+
+# d.根据时间和拟合值绘制残差。 这些图是否显示模型存在任何问题？
+autoplot(fancy_lm$residuals)
+checkresiduals(fancy_lm)
+
+# 残差似乎具有自相关性，1992年至1994年残差有季节性，说明残差与时间存在某种关系。
+cbind(Residuals = fancy_lm$residuals,
+      Fitted_values = fancy_lm$fitted.values) %>%
+  as.data.frame() %>%
+  ggplot(aes(x = Fitted_values,
+             y = Residuals)) +
+    geom_point()
+# 但以上这幅图表示，残差不具有异方差性
+
+# e.绘制每个月残差的箱线图。 这是否揭示了模型的任何问题？
+cbind.data.frame(
+    Month = factor(
+      month.abb[round(12*(Time_fancy - floor(Time_fancy)) + 1)],
+      labels = month.abb,
+      ordered = TRUE
+    ),
+    Residuals = fancy_lm$residuals
+    ) %>%
+  ggplot(aes(x = Month,
+             y = Residuals)) +
+    geom_boxplot()
+
+# 残差每个月的变化
+ggsubseriesplot(fancy_lm$residuals)
+# 残差的分布在某些月份是不对称的。残差的中位数不是0（残差的平均值应该是所有月份的0，因为得到最小的SSE意味着得到平均值）。具有这种特性的残差不可能是正态分布，这将使预测区间难以得到。
+
+# f.系数值代表不同变量怎样的含义？
+fancy_lm$coefficients
+# 所有系数表明，销售额与这些变量是正相关的。趋势为正值说明其销售额连年增长，season也都为正值，并且随着月份逐渐增加。同时冲浪节变量也显示出了正值，代表冲浪节对3月的销售额有正向影响。
+
+# g.从 Breusch-Godfrey 测试结果中能得到关于模型的什么信息？
+checkresiduals(fancy_lm)
+
+# 说明其残差具有自相关性。
+
+# h.使用回归模型预测1994年，1995年和1996年的月度销售额,并对每个预测值生成预测区间。
+# 将冲浪节记录在94-96年
+future_fancy <- rep(0, 36)
+for(i in 1:36){
+  if(i %% 12 == 3){
+    future_fancy[i] <- 1
+  }
+}
+# 转换数据为ts
+future_fancy <- ts(data = future_fancy,
+                   start = 1994,
+                   end = c(1996, 12),
+                   frequency = 12)
+
+fc_fancy <- forecast(fancy_lm, newdata = data.frame(Time = time(future_fancy),
+                                                    surfing_festival = future_fancy))
+# 画图
+autoplot(fc_fancy)
+
+fc_fancy$upper
+fc_fancy$lower
+
+# i.变换预测值和预测区间以获取原始数据的预测值和预测区间。
+# 创建变量原始fancy
+fc_fancy_original <- fc_fancy
+
+# 选定所需要变换的成分
+members_inv.log <- c('x', 'mean', 'lower', 'upper', 'residuals', 'fitted')
+
+# 逆对数变换
+fc_fancy_original[members_inv.log] <- lapply(
+  fc_fancy[members_inv.log],
+  InvBoxCox,
+  lambda = 0
+)
+
+# 对模型中的模型应用逆对数变换
+fc_fancy_original[['model']][['model']][1] <- lapply(
+  fc_fancy[['model']][['model']][1],
+  InvBoxCox,
+  lambda = 0
+)
+
+autoplot(fc_fancy_original)
+fc_fancy_original$upper
+fc_fancy_original$lower
+
+# j.如何通过修改模型来改进这些预测？
+# 当不使用对数变换来进行预测
+tslm_fancy <- tslm(
+  fancy ~ trend + season + surfing_festival
+  )
+
+fc_tslm_fancy <- forecast(
+  tslm_fancy, 
+  newdata = data.frame(Time = time(future_fancy),
+                       surfing_festival = future_fancy)
+)
+
+autoplot(fc_tslm_fancy)
+# 结果表明，还是需要对销售量进行对数变换，才能够预测的更为准确。
+```
+# 6.数据集 gasoline 中包含1991年2月2日至2017年1月20日美国成品汽油产品供应的每周数据。单位为“每天百万桶”。仅考虑截止到2004年底的数据。
+```{r}
+# a.根据数据的趋势拟合谐波回归。尝试更改傅立叶变换值。绘制观察到的汽油和拟合值，并对所看到的结果进行评价。
+str(gasoline)
+ts_info(gasoline)
+
+# 提取至2004年的数据
+gasoline_until_2004 <- window(gasoline, end = 2005)
+autoplot(gasoline_until_2004, xlab = "Year")   # 具有趋势与季节性
+
+# 
+for(num in c(1, 2, 3, 5, 10, 20)){
+  # 将傅里叶项作为名称.
+  var_name <- paste("tslm_ft",
+                    as.character(num),
+                    "_gasoline_until_2004",
+                    sep = "")
+  
+  # 为每个名称创建模型
+  assign(var_name,
+         tslm(gasoline_until_2004 ~ trend + fourier(
+           gasoline_until_2004,
+           K = num
+           ))
+         )
+  # 画图
+  print(
+    autoplot(gasoline_until_2004) +
+      autolayer(get(var_name)$fitted.values,
+                series = as.character(num)) +
+      ggtitle(var_name) +
+      ylab("gasoline") +
+      guides(colour = guide_legend(title = "傅立叶变换对的数量"))
+  )
+}
+
+autoplot(gasoline_until_2004) +
+  autolayer(tslm_ft1_gasoline_until_2004$fitted.values, series = "1") +
+  autolayer(tslm_ft5_gasoline_until_2004$fitted.values, series = "2") +
+  autolayer(tslm_ft10_gasoline_until_2004$fitted.values, series = "3") +
+  autolayer(tslm_ft10_gasoline_until_2004$fitted.values, series = "5") +
+  autolayer(tslm_ft20_gasoline_until_2004$fitted.values, series = "10") +
+  autolayer(tslm_ft20_gasoline_until_2004$fitted.values, series = "20") +
+  guides(colour = guide_legend(title = "Fourier Transform pairs")) +
+  scale_color_discrete(breaks = c(1, 2, 3, 5, 10, 20))
+
+# 随着傅里叶项的个数增加，其拟合值更接近真实值，但拟合线并不能很好的与真实趋势对应。
+
+# b.通过最小化AICc或CV值来选择要适当数量的傅里叶项。
+for(i in c(1, 2, 3, 5, 10, 20)){
+  tslm_ft_gasoline_until_2004.name <- paste(
+    "tslm_ft", as.character(i), "_gasoline_until_2004",
+    sep = ""
+  )
+  writeLines(
+    paste(
+    "\n", tslm_ft_gasoline_until_2004.name, "\n"
+    )
+  )
+  print(CV(get(tslm_ft_gasoline_until_2004.name)))
+}
+# 当傅里叶项数量为10时的AICc和CV值最小化
+
+# 获取最小化AICc或CV的精确傅里项数量。
+min_AICc <- Inf
+min_K_by_AICc <- 0
+min_CV <- Inf
+min_K_by_CV <- 0
+AICc_K <- 0
+CV_K <- 0
+
+# 最大项数量为26因为gasoline数据的频率是52.18
+for(num in 1:26){
+  AICc_K <- CV(
+    tslm(
+      gasoline_until_2004 ~ trend + fourier(gasoline_until_2004, K = num)
+    )
+  )[["AICc"]]
+  print(AICc_K)
+  CV_K <- CV(
+    tslm(
+      gasoline_until_2004 ~ trend + fourier(gasoline_until_2004, K = num)
+    )
+  )[["CV"]]
+  print(CV_K)
+  
+  # 如果找到了最小的AICc和CV值，循环就不需要再运行了。因此打印出结果的傅里叶项数量，并中断循环。
+  # 如果num = 1，不要运行下面的代码，转到num = 2。仅凭num=1的结果，无法知道AICc和CV值是否最小。
+  if(num != 1){
+    if(AICc_K >= min_AICc & CV_K >= min_CV){
+      writeLines(
+        paste("The number of Fourier Transform pairs to minimize AICc",
+              "\n",
+              as.character(min_K_by_AICc)
+        )
+      )
+      writeLines(
+        paste("The number of Fourier Transform pairs to minimize CV",
+              "\n",
+              as.character(min_K_by_CV)
+        )
+      )
+      break
+    }
+  }
+  
+  # 找出最小化AICc和CV以及傅里叶项的数量
+  if(AICc_K < min_AICc){
+    min_AICc <- AICc_K
+    min_K_by_AICc <- num
+  }
+  if(CV_K < min_CV){
+    min_CV <- CV_K
+    min_K_by_CV <- num
+  }
+}
+# 需要7对傅里叶项才能够获得最小化AICc和CV
+
+# c.利用checkresiduals()函数检验最终模型的残差。尽管残差未通过相关性测试，但对结果影响不大，不会对预测值和预测区间产生太大影响。（请注意，即使相关性很重要，但此处相关性相对较小。）
+tslm_ft7_gasoline_until_2004 <- tslm(
+  gasoline_until_2004 ~ trend + fourier(
+    gasoline_until_2004, 
+    K = 7
+    )
+  )
+
+checkresiduals(tslm_ft7_gasoline_until_2004)
+
+# d.要使用谐波回归进行预测，需要生成傅立叶项的未来值。 可以通过如下代码完成。
+fc_gasoline_2005 <- forecast(
+  tslm_ft7_gasoline_until_2004,
+  newdata=data.frame(fourier(
+    gasoline_until_2004, K = 7, h = 52)
+    )
+  )
+autoplot(fc_gasoline_2005)
+# 其中， tslm_ft7_gasoline_until_2004 是使用 tslm() 的模型拟合值， K 是傅里叶项数， h 是预测步长。
+
+# e.预测2005年预测值并与其真实值比较，你发现了什么？
+autoplot(fc_gasoline_2005) +
+  autolayer(window(
+    gasoline,
+    start = 2005,
+    end = 2006
+    ), series = "真实值"
+  ) 
+
+# 几乎所有的预测值都是80%的预测区间内，但是预测值无法很好的反应现实世界的突然下跌和上升。
+```
+# 7.数据集 huron 中包含了1875–1972年间休伦湖的水位数据。
+```{r}
+# a.绘制数据并对其特点进行评价。
+autoplot(huron)   # 从1875年值1915年之间有下降的趋势，再后来就趋于波动状态，无论上升还是下降的幅度都较大，但是从未超过1875年的值。
+
+# b.将线性拟合回归结果与在1915年处分段线性回归结果进行比较分析。
+h <- 8
+# 线性回归模型
+huron_tslm <- tslm(huron~trend)
+fc_huron <- forecast(huron_tslm, h = h)
+
+# 分段线性回归
+t <- time(huron)
+t.break <- 1915
+tb <- ts(pmax(0, t - t.break), start = 1875)
+
+huron.pw <- tslm(huron ~ t + tb)
+t.new <- t[length(t)] + seq(h)
+tb.new <- tb[length(tb)] + seq(h)
+
+
+newdata <- cbind(t = t.new, tb = tb.new) %>%
+  as.data.frame()
+fc_huron.pw <- forecast(huron.pw, newdata = newdata)
+
+# 画图
+autoplot(huron) +
+  autolayer(fitted(huron_tslm), series = "线性") +
+  autolayer(fitted(huron.pw), series = "分段回归") +
+  autolayer(fc_huron.pw, series = "分段回归") +
+  autolayer(fc_huron$mean, series = "线性") +
+  xlab("年份") + ylab("水位") +
+  ggtitle("休伦湖水位变化")
+
+# 线性回归的结果是呈下降趋势的，我们知道，在1915年之后，休伦湖水位应该是处于波动状态的，而不是一直下降。然而分段回归给出的结果会令人较为满意。
+
+# c.通过上述两个模型，预测1980年之前休伦湖的水位，并分析两个模型的预测结果。
+# 线性
+autoplot(huron) +
+  autolayer(fitted(huron_tslm), series = "线性") +
+  autolayer(fc_huron$mean, series = "线性") +
+  xlab("年份") + ylab("水位") +
+  ggtitle("休伦湖水位变化")
+
+# 分段回归
+autoplot(huron) +
+  autolayer(fitted(huron.pw), series = "分段回归") +
+  autolayer(fc_huron.pw, series = "分段回归") +
+  xlab("年份") + ylab("水位") +
+  ggtitle("休伦湖水位变化")
+
+# 不知道什么原因，线性模型的预测区间未显示出来，只能单纯评判预测结果。如果只根据预测结果评判，模型是不合格的，因为休伦湖的水位不是连年减少的，而是趋于波动状态才对。而分段回归的预测结果较好，其预测区间都在历史数据值的范围内，且其捕捉到了1915年开始的趋于稳定（波动）的状态。
+```
+
