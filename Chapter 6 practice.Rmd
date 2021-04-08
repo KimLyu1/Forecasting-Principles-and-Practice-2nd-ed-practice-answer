@@ -1,0 +1,304 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# 2.数据集plastics包含塑料制造商生产的产品A的5年月度销售数据（以千为单位）
+```{r warning=FALSE}
+library(TSstudio)
+library(fpp2)
+library(seasonal)
+
+# a.画出产品A销量的时间序列图。你可以看出季节性波动或是趋势-周期吗？
+autoplot(plastics)    #  具有稳步上升的趋势，和一定季节性(每年的后半年会突然下降)。
+ts_info(plastics)
+
+# b.用经典乘法分解计算趋势-周期指数和季节指数。
+plastics_decom <- plastics %>% decompose(type="multiplicative")
+autoplot(plastics_decom) + xlab("Year") +
+  ggtitle("经典乘法分解")
+
+# c.计算出的结果是否符合(a)部分中的图像解释？
+# 符合，趋势指数是一个逐年增长的，正确。   季节指数是先增长，后半年下降的，正确。
+
+# d.计算并画出经季节调整的数据
+autoplot(plastics, series="数据") +
+  autolayer(trendcycle(plastics_decom), series="趋势") +
+  autolayer(seasadj(plastics_decom), series="季节调整") +
+  xlab("年份") + ylab("销售额") +
+  ggtitle("塑料制造商生产的产品A的5年月度销售数据") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# e.将一个观测值改为一个异常值（例如，将一个观测值加500），然后重新计算经季节调整的数据。异常点会产生什么影响？
+plastics_outlier <- plastics
+plastics_outlier[25] <- plastics_outlier[25] + 500
+plastics_decom_outlier <- plastics_outlier %>% decompose(type="multiplicative")
+
+autoplot(plastics, series="数据") +
+  autolayer(trendcycle(plastics_decom_outlier), series="趋势") +
+  autolayer(seasadj(plastics_decom_outlier), series="季节调整") +
+  xlab("年份") + ylab("销售额") +
+  ggtitle("塑料制造商生产的产品A的5年月度销售数据") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# 异常点将会放大季节性的影响，但对趋势几乎没有影响。
+
+# f.如果异常点在时间序列的端点附近而不是在时间序列的中间部分，那么会有什么差别吗？
+plastics_outlier_2 <- plastics
+plastics_outlier_2[1] <- plastics_outlier_2[1] + 500
+plastics_decom_outlier2 <- plastics_outlier_2 %>% decompose(type="multiplicative")
+
+autoplot(plastics, series="数据") +
+  autolayer(trendcycle(plastics_decom_outlier2), series="趋势") +
+  autolayer(seasadj(plastics_decom_outlier2), series="季节调整") +
+  xlab("年份") + ylab("销售额") +
+  ggtitle("塑料制造商生产的产品A的5年月度销售数据") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# 如果异常点处在端点位置时，其对整个季节调整后数据的整体影响较小。只会在端点处有大影响，而在其他地方影响很小。
+```
+# 3.回顾一下零售时间序列数据（在章节2.10的练习题3中） 用 X11 方法分解时间序列。它是否揭示了什么你先前没有发现的异常值或是异常特征？
+```{r}
+retaildata <- readxl::read_excel("D:/Chrome Download/retail.xlsx", skip=1)
+myts <- ts(retaildata[,"A3349873A"],
+  frequency=12, start=c(1982,4))
+
+# 原来的
+autoplot(myts)
+ggseasonplot(myts)
+ggsubseriesplot(myts)
+gglagplot(myts)
+ggAcf(myts)
+
+# X11 分解
+myts %>% seas(x11="") %>%
+autoplot() +
+  ggtitle("零售数据A3349873A的X11分解")
+
+# 有几处是原来看不到的。其一是季节性在2005年之后逐渐下降。其二是在约2001年时，有个异常点（尖峰）。
+```
+# 4.图 6.16和图 6.17 展示了从1978年2月至1995年8月澳大利亚的民用劳动力人数月度数据的分解结果。
+```{r}
+# a.写3–5句话来描述季节调整后的结果，在你的解释中要重点注意图的尺度。
+# 图6.16
+stl_labour <- stl(labour, s.window = 13, robust = TRUE)
+
+autoplot(stl_labour) + xlab("Year") +
+  ggtitle("STL decomposition of civilian labour force")
+# 图6.17
+ggsubseriesplot(seasonal(stl_labour)) +
+  ylab("Seasonal")
+
+# 放在同一水平上观察
+autoplot(labour, series="数据") +
+  autolayer(trendcycle(stl_labour), series="趋势") +
+  autolayer(seasadj(stl_labour), series="季节调整") +
+  xlab("年份") + ylab("销售额") +
+  ggtitle("劳动力人数月度数据") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# 实际上，其季节性随着时间有略微的增大。因此有季节调整后的数据可见，其劳动力人数是连年增加的，但是在91年和92年出现了突然的下跌。
+
+# b.1991/1992年的衰退是否在估计的分量中可见？
+# 是的，可见。
+```
+# 5.本道练习题中用到了cangas数据（1960年1月至2005年2月加拿大天然气月度产量，以十亿立方米为单位）
+```{r}
+# a.用autoplot()，ggsubseriesplot()和ggseasonplot()作图，来观察季节性随时间变化的影响。你觉得是什么导致了它变化如此之大？
+autoplot(cangas)
+ggsubseriesplot(cangas)
+ggseasonplot(cangas)          # 为什么1975-1990年之间突然季节性变化那么大？？
+                              # 查阅资料发现，天然气是能够发电的，目前作为高效的清洁能源使用。
+                              # 那么就可以解释这个突然的变化了，因为无论冬季还是夏季，其用电量都会增加（空调，暖气）,因此发现冬天和夏                                 天的天然气产量不相上下
+
+# b.对数据进行 STL 分解。你需要选择s.window来允许改变季节项的形状。
+cangas_stl <- stl(cangas, s.window = 13, robust = TRUE)
+autoplot(cangas_stl)
+
+# 80年代的季节性显示变化非常大
+autoplot(cangas, series="数据") +
+  autolayer(trendcycle(cangas_stl), series="趋势") +
+  autolayer(seasadj(cangas_stl), series="季节调整") +
+  xlab("年份") + ylab("产量") +
+  ggtitle("加拿大天然气月度产量") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# c.比较使用 SEATS 和 X11 后的结果，它们有什么不同？
+
+# SEATS
+autoplot(seas(cangas)) +
+  ggtitle("加拿大天然气月度产量的SEATS分解")
+
+autoplot(cangas, series="数据") +
+  autolayer(trendcycle(seas(cangas)), series="趋势") +
+  autolayer(seasadj(seas(cangas)), series="季节调整") +
+  xlab("年份") + ylab("产量") +
+  ggtitle("加拿大天然气月度产量") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# X11
+cangas %>% seas(x11="") %>%
+autoplot() +
+  ggtitle("加拿大天然气月度产量的X11分解")
+
+autoplot(cangas, series="数据") +
+  autolayer(trendcycle(seas(cangas, x11 = "")), series="趋势") +
+  autolayer(seasadj(seas(cangas, x11 = "")), series="季节调整") +
+  xlab("年份") + ylab("产量") +
+  ggtitle("加拿大天然气月度产量") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# X11分解方法得到的季节调整后数据更为平滑，相比于SEATS来说，没有那么稳健。另外，seats和x11中，季节性和剩余的均值都为1而非0（stl是0）。综合来说，使用STL方法时，异常观测值对剩余成分的影响更大。STL更为稳健。
+```
+# 6.本道习题中我们将使用bricksq数据（1956年至1994年澳大利亚黏土砖季度生产数据）
+```{r}
+# a.用STL分解法来计算趋势-周期指数和季节指数（具有固定或变化的季节性的实验）。
+# 固定的
+bricksq_stl_fixed <- stl(bricksq, s.window = "periodic", robust = TRUE)
+autoplot(bricksq_stl_fixed)
+# 变化的
+bricksq_stl_changed <- stl(bricksq, s.window = 13, robust = TRUE)
+autoplot(bricksq_stl_changed)
+# 变化的季节性拥有更小的剩余。
+
+# b.计算并画出经季节调整后的数据。
+autoplot(bricksq, series="数据") +
+  autolayer(trendcycle(bricksq_stl_changed), series="趋势") +
+  autolayer(seasadj(bricksq_stl_changed), series="季节调整") +
+  xlab("年份") + ylab("产量") +
+  ggtitle("黏土砖季度生产数据") +
+  scale_colour_manual(values=c("gray","blue","red"), breaks=c("数据","季节调整","趋势"))
+
+# c.用朴素法来对季节调整后数据进行预测。
+# 固定
+bricksq_stl_fixed %>% seasadj() %>% naive() %>% autoplot() + ylab("产量") +
+  ggtitle("季节调整数据的朴素预测")
+# 变化
+bricksq_stl_changed %>% seasadj() %>% naive() %>% autoplot() + ylab("产量") +
+  ggtitle("季节调整数据的朴素预测")
+
+# 可以看出，用STL分解的季节性调整数据的预测区间比固定季节性调整数据的预测区间要小。这是因为当季节性可以改变时，剩余成分的方差减少了。
+
+# d.用stlf()来对原始数据预测的结果进行再季节化
+fc_bricksq <- stlf(bricksq)
+autoplot(fc_bricksq)
+
+# e.结果是否看起来不正确？
+checkresiduals(fc_bricksq)
+# 是的，残差是自相关的
+
+# f.用稳健的STL分解法重复一遍，它的结果是否看起来与之前不同？
+fc_bricksq_robust <- stlf(bricksq, robust = TRUE)
+autoplot(fc_bricksq_robust)
+checkresiduals(fc_bricksq_robust)
+# 残差略微较naive方法收敛一些
+
+# g.对比使用stlf()和使用snaive()的预测结果，用一个测试集比较最后两年的数据，哪一种方法效果更好？
+ts_info(bricksq)
+
+trainset_brick <- subset(bricksq, 
+                        end = length(bricksq) - 8)
+testset_brick <- subset(bricksq,
+                        start = length(bricksq) - 7)
+# snaive
+fc_bricksq_last2_snaive <- snaive(trainset_brick)
+autoplot(fc_bricksq_last2_snaive)
+checkresiduals(fc_bricksq_last2_snaive)
+
+# stlf
+fc_bricksq_last2_stlf <- stlf(trainset_brick, robust = TRUE)
+autoplot(fc_bricksq_last2_stlf)
+checkresiduals(fc_bricksq_last2_stlf)
+
+# 比较
+autoplot(bricksq, series = "Original data") +
+  geom_line(size = 1) +
+  autolayer(fc_bricksq_last2_stlf, PI = FALSE, size = 1,
+            series = "stlf") +
+  autolayer(fc_bricksq_last2_snaive, PI = FALSE, size = 1,
+            series = "snaive") + 
+  autolayer(testset_brick)
+
+# 可以看到实际上是stlf预测的效果更好，其预测区间更准确。与snaive函数不同的是，stlf函数也可以使用趋势，而且其季节性可以随时间变化。测试集具有趋势性和季节性，因此stlf函数比snaive函数更好。因此stlf函数比snaive函数更能预测近期的产砖量。
+```
+# 7.用stlf()来生成writing序列的预测，选用method="naive"或method="rwdrift"中最合适的一个。如果你认为Box-Cox变换是必要的话，可使用lambda参数。
+```{r}
+# 认识数据
+help(writing)  # 打印和写作纸销售量月度数据.1968年-1977年
+ts_info(writing)
+autoplot(writing)
+
+# 可以看出，writing数据有增加的趋势，因此最好使用rwdrift方法来预测非季节性（季节性调整）的成分。因此最好使用rwdrift方法来预测非季节性(季节性调整)成分。
+# 我认为最好是做Box-Cox变换，使整个系列的数据中季节性变化的大小大致相同。
+
+# naive
+fc_wiriting_naive <- stlf(writing, method = "naive")
+autoplot(fc_wiriting_naive)
+# 经过boxcox转换
+stlf_writing_n <- stlf(writing, 
+                     s.window = 13, 
+                     robust = TRUE,
+                     lambda = BoxCox.lambda(writing),
+                     method = "naive")
+
+autoplot(stlf_writing_n)
+
+# rwdrift
+fc_wiriting_rwdrift <- stlf(writing, method = "rwdrift")
+autoplot(fc_wiriting_rwdrift)
+# 经过boxcox转换
+stlf_writing_r <- stlf(writing, 
+                     s.window = 13, 
+                     robust = TRUE,
+                     lambda = BoxCox.lambda(writing),
+                     method = "rwdrift")
+
+autoplot(stlf_writing_r)
+
+# 画图比较
+autoplot(writing) + 
+  autolayer(fc_wiriting_naive, PI = FALSE, series = "naive") +
+  autolayer(fc_wiriting_rwdrift, PI = FALSE, series = "rwfdrift") + 
+  autolayer(stlf_writing_r, PI = FALSE, series = "rwfdrift_boxcox") + 
+  autolayer(stlf_writing_n, PI = FALSE, series = "naive_boxcox")
+```
+
+# 8.用stlf()来生成fancy序列的预测，选用method="naive"或method="rwdrift"中最合适的一个。如果你认为Box-Cox变换是必要的话，可使用lambda参数。
+```{r}
+# 认识数据
+ts_info(fancy)
+autoplot(fancy)
+
+# 具有一个上升的趋势，运用上节的方法重复。
+# naive
+fc_fancy_naive <- stlf(fancy, method = "naive")
+autoplot(fc_wiriting_naive)
+# 经过boxcox转换
+stlf_fancy_n <- stlf(fancy, 
+                     s.window = 13, 
+                     robust = TRUE,
+                     lambda = BoxCox.lambda(fancy),
+                     method = "naive")
+
+autoplot(stlf_fancy_n)
+
+# rwdrift
+fc_fancy_rwdrift <- stlf(fancy, method = "rwdrift")
+autoplot(fc_fancy_rwdrift)
+# 经过boxcox转换
+stlf_fancy_r <- stlf(fancy, 
+                     s.window = 13, 
+                     robust = TRUE,
+                     lambda = BoxCox.lambda(fancy),
+                     method = "rwdrift")
+
+autoplot(stlf_fancy_r)
+
+# 画图比较
+autoplot(fancy) + 
+  autolayer(fc_fancy_naive, PI = FALSE, series = "naive") +
+  autolayer(fc_fancy_rwdrift, PI = FALSE, series = "rwfdrift") + 
+  autolayer(stlf_fancy_r, PI = FALSE, series = "rwfdrift_boxcox") + 
+  autolayer(stlf_fancy_n, PI = FALSE, series = "naive_boxcox")
+```
+
