@@ -6,3 +6,6 @@ All answers are personal and not related to the author.
 
 # Acknowledgements
 Due to my lack of programming experience, most of the custom functions are referenced from https://github.com/JehyeonHeo/Forecasting_with_R_practices
+
+# Note
+All comments are in Chinese. 所有的注释均为中文。
