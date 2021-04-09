@@ -1,0 +1,554 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+# 1.考虑 pigs 序列 — 维多利亚州每月屠宰的猪的数量。
+```{r}
+library(fpp2)
+library(TSstudio)
+library(seasonal)
+
+# a.使用R中的 ses() 函数找到α和ℓ0的最优值，并生成未来四个月的预测。
+fit_pigs <- ses(pigs) 
+summary(fit_pigs)   # α = 0.2971,  l = 77260.0561 
+ts_info(pigs)   # 月度数据
+
+fc_pigs <- forecast(fit_pigs, h = 4)
+autoplot(fc_pigs)
+
+# b.使用^y±1.96s计算第一个预测的95％的预测区间，其中s是残差的标准差。将你的区间与R产生的区间进行比较。
+# 模型预测的区间
+fc_pigs$upper[1, "95%"]
+fc_pigs$lower[1, "95%"]
+
+# 用公式计算的区间
+s <- sd(fc_pigs$residuals)
+fc_pigs$mean[1] + 1.96*s
+fc_pigs$mean[1] - 1.96*s
+
+# 所得出的结果略微不同，不太懂为啥。
+
+autoplot(pigs) + 
+  autolayer(fc_pigs$fitted, series = "fitted value") + 
+  autolayer(fc_pigs, series = "forecast 4 months")
+
+```
+# 2.编写自己的函数来实现简单的指数平滑。该函数应该使用参数 y（时间序列）， alpha（平滑参数  α）和 level（初始水平ℓ0）。它应该返回时间系列中下一个观测值的预测值。它是否给出与 ses() 相同的预测值？
+```{r}
+# 创建SES函数
+SES <- function(y, alpha, l0){
+  y_hat <- l0
+  for(index in 1:length(y)){
+   y_hat <- alpha*y[index] + (1 - alpha)*y_hat 
+  }
+  cat("Forecast of next observation by SES function: ",
+      as.character(y_hat),
+      sep = "\n")
+}
+
+# 对比自建函数与ses函数的结果
+alpha <- fc_pigs$model$par[1]
+l0 <- fc_pigs$model$par[2]
+
+SES(pigs, alpha = alpha, l0 = l0)
+writeLines(paste(
+  "Forecast of next observation by ses function: ",  as.character(fc_pigs$mean[1])
+  ))
+
+# 是的，预测值是相同的
+
+```
+# 3.修改上一题你编写的函数，使得返回值变成误差平方和，而不是下一个观测值的预测值。然后使用 optim 函数找到  α和  ℓ0的最优值。你是否得到了与 ses() 函数相同的值？
+```{r}
+# 修改函数
+SES <- function(pars = c(alpha, l0), y){
+  # 将第一个参数改为 alpha 和 l0 的向量，而不是将 alpha 和 l0 分开，因为 optim 函数希望将一个向量作为第一个参数的函数作为 fn 参数。
+  error <- 0
+  SSE <- 0
+  alpha <- pars[1]
+  l0 <- pars[2]
+  y_hat <- l0
+  
+  for(index in 1:length(y)){
+    error <- y[index] - y_hat
+    SSE <- SSE + error^2
+    y_hat <- alpha*y[index] + (1 - alpha)*y_hat 
+  }
+  
+  return(SSE)
+}
+
+# 对比（以pigs数据为例）,设置alpha为0.4
+opt_SES_pigs <- optim(par = c(0.4, pigs[1]), y = pigs, fn = SES)     # alpha取值通常从0.2，0.4，0.6，0.8，1中取
+
+writeLines(paste(
+  "Optimal parameters for the result of SES function: ",
+  "\n",
+  as.character(opt_SES_pigs$par[1]),
+  ", ",
+  as.character(opt_SES_pigs$par[2]),
+  sep = ""
+  ))
+
+writeLines(paste(
+  "Parameters got from the result of ses function: ",
+  "\n",
+  as.character(fc_pigs$model$par[1]),
+  ", ",
+  as.character(fc_pigs$model$par[2]),
+  sep = ""
+))
+
+# 基本上是一样的
+```
+# 4.结合前面的两个函数来得到一个函数，使得它可以找到α和ℓ0的最优值，并对时间序列中的下一个观测值进行预测。
+```{r}
+# 修改SES函数，找出α和l0的最佳值，并产生下一次观测值的预测。
+SES <- function(init_pars, data){
+  # init_pars is c(init_alpha, init_l0)
+
+  # 创建下一观测值的预测的变量
+  fc_next <- 0
+  
+  # 使SSE函数在给定参数和数据的情况下得到SSE。
+  SSE <- function(pars, data){
+    error <- 0
+    SSE <- 0
+    alpha <- pars[1]
+    l0 <- pars[2]
+    y_hat <- l0
+    
+    for(index in 1:length(data)){
+      error <- data[index] - y_hat
+      SSE <- SSE + error^2
+      
+      y_hat <- alpha*data[index] + (1 - alpha)*y_hat 
+    }
+    # 利用超级赋值，使预测值可以在SES功能之外使用。
+    fc_next <<- y_hat
+    return(SSE)
+  }
+  
+  # 使用optim函数获得alpha和l0的最优值
+  optim_pars <- optim(par = init_pars, data = data, fn = SSE)
+  
+  # 返回结果
+  return(list(
+    Next_observation_forecast = fc_next,
+    alpha = optim_pars$par[1],
+    l0 = optim_pars$par[2]
+    ))
+}
+
+# 比较结果（pigs数据为例）
+SES(c(0.4, pigs[1]), pigs)
+
+print("Next observation forecast by ses function")
+fc_pigs$mean[1]
+
+print("alpha calculated by ses function")
+fc_pigs$model$par[1]
+
+print("l0 calculated by ses function")
+fc_pigs$model$par[2]
+```
+# 5.books 数据集包含了同一家商店的平装书和精装书的每日销量 。任务是预测未来四天 平装书和精装书的销量。
+```{r}
+# a.绘制时序图并讨论数据的主要特征。
+autoplot(books)
+
+books_paperback <- books[, "Paperback"]
+books_hardcover <- books[, "Hardcover"]
+# b.使用 ses() 函数预测每个时间序列，并绘制预测图。
+ts_info(books_paperback)
+
+books_paperback_ses <- ses(books_paperback, h = 4)
+books_hardcover_ses <- ses(books_hardcover, h = 4)
+
+autoplot(books_paperback_ses)
+autoplot(books_hardcover_ses)
+
+# c.计算每种情况下训练数据的RMSE值。
+accuracy(books_paperback_ses)    # 33.63769
+accuracy(books_hardcover_ses)   # 31.93101
+```
+
+# 6.
+```{r}
+# a.现在，将Holt线性方法应用于 paperback 和 hardback 序列，并计算每种情况下的之后四天预测值。
+books_paperback_holt <- holt(books_paperback, h = 4)
+books_hardcover_holt <- holt(books_hardcover, h = 4)
+
+autoplot(books_paperback) + 
+  autolayer(books_paperback_holt, PI = FALSE)
+autoplot(books_hardcover) +
+  autolayer(books_hardcover_holt, PI = FALSE)
+
+accuracy(books_paperback_holt)
+accuracy(books_hardcover_holt)
+
+# b.对于上一个问题中的两个时间序列，比较使用Holt方法时与简单指数平滑方法时的RMSE值。（请记住，Holt的方法比SES方法多用一个参数。）讨论在这些数据集上使用这两种预测方法的优点。
+# paperback
+accuracy(books_paperback_ses)    # 33.63769 
+accuracy(books_paperback_holt)   # 31.13692 
+
+# hardcover
+accuracy(books_hardcover_ses)   # 31.93101 
+accuracy(books_hardcover_holt)   # 27.19358 
+
+# 1.无论在哪个时间序列上，Holt方法的RMSE都较SES方法小许多。
+# 2.如果数据有线性近似的趋势，即使比SES多了一个参数，使用Holt的线性方法也会更好。但如果数据中没有任何特别的趋势，为了使模型更简单，最     好使用SES方法。
+
+# c.使用这两种方法比较两个时间序列的预测值。你认为哪个最好？
+# Paperback
+autoplot(books_paperback) + 
+  autolayer(books_paperback_ses, series = "SES", PI = FALSE) + 
+  autolayer(books_paperback_holt, series = "Holt", PI = FALSE)
+
+# Hardcover
+autoplot(books_hardcover) + 
+  autolayer(books_hardcover_ses, series = "SES", PI = FALSE) + 
+  autolayer(books_hardcover_holt, series = "Holt", PI = FALSE)
+
+# Holt方法较好，因为它捕捉到了原时间序列的线性趋势，而SES并没有。
+
+# d.使用RMSE值并假设误差是正态的，为每个时间序列的第一个预测值计算95％的预测区间。比较你的区间与使用 ses 和 holt 生成的预测区间。
+# paperback
+## ses
+books_paperback_ses$lower[1, 2]
+books_paperback_ses$upper[1, 2]
+## holt
+books_paperback_holt$lower[1, 2]
+books_paperback_holt$upper[1, 2]
+## calculated formula - ses
+books_paperback_ses$mean[1] - 1.96*accuracy(books_paperback_ses)[, 2]
+books_paperback_ses$mean[1] + 1.96*accuracy(books_paperback_ses)[, 2]
+## calculated formula - holt
+books_paperback_holt$mean[1] - 1.96*accuracy(books_paperback_holt)[, 2]
+books_paperback_holt$mean[1] + 1.96*accuracy(books_paperback_holt)[, 2]
+
+# hardcover
+## ses
+books_hardcover_ses$lower[1, 2]
+books_hardcover_ses$upper[1, 2]
+## holt
+books_hardcover_holt$lower[1, 2]
+books_hardcover_holt$upper[1, 2]
+## calculated formula - ses
+books_hardcover_ses$mean[1] - 1.96*accuracy(books_hardcover_ses)[, 2]
+books_hardcover_ses$mean[1] + 1.96*accuracy(books_hardcover_ses)[, 2]
+## calculated formula - holt
+books_hardcover_holt$mean[1] - 1.96*accuracy(books_hardcover_holt)[, 2]
+books_hardcover_holt$mean[1] + 1.96*accuracy(books_hardcover_holt)[, 2]
+
+# 对于paperback和hardcover，公式计算所得与函数结果几乎一样
+```
+
+# 7.本题中，使用数据集 eggs，它包含1900–1993年间美国一打鸡蛋的价格。尝试使用 holt() 函数中的各种选项来查看预测值随衰减趋势或Box-Cox变换而变化的情况。尝试直观地观察每个参数对预测有什么影响。
+
+[提示：在调用 holt() 时使用 h=100，以便在绘制预测图时可以清楚地看到各种选项之间的差异。]
+
+哪个模型有最好的RMSE？
+```{r}
+# 无衰减无boxcox变换
+eggs_holt <- holt(eggs, h = 100)
+autoplot(eggs_holt) + ggtitle("无衰减无boxcox变换")
+
+# 有衰减趋势无boxcox变换
+eggs_holt_damped <- holt(eggs, h = 100, damped = TRUE)
+autoplot(eggs_holt_damped) + ggtitle("有衰减趋势无boxcox变换")
+
+# 无衰减趋势有boxcox变换
+eggs_holt_boxcox <- holt(eggs, h = 100, lambda = BoxCox.lambda(eggs))
+autoplot(eggs_holt_boxcox) + ggtitle("无衰减趋势有boxcox变换")
+
+# 有衰减趋势有boxcox变换
+eggs_holt_both <- holt(eggs, h = 100, damped = TRUE, lambda = BoxCox.lambda(eggs))
+autoplot(eggs_holt_both) + ggtitle("有衰减趋势有boxcox变换")
+
+# damped = TRUE时，其预测结果会倾向与简单指数平滑方法（SES），当lambda不为NULL时，其预测结果更为平滑。
+
+# 比较各模型的RMSE
+writeLines("The RMSE comparison: ")
+accuracy(eggs_holt)[, 2]
+accuracy(eggs_holt_damped)[, 2]
+accuracy(eggs_holt_boxcox)[, 2]
+accuracy(eggs_holt_both)[, 2]
+
+# RMSE都差不多，若要说最好非得选一个的话，eggs_holt_boxcox，无衰减趋势有boxcox变换的模型最好。它给出了可信的点预测和预测区间。对于100年的预测，Box-Cox变换起到了足够的衰减作用。在使用衰减选项的情况下，点预测不能跟随现有的趋势。
+```
+# 8.回顾零售时间序列数据（来自 2.10 节的练习3）
+```{r}
+# a.为什么乘性季节性对这个时间序列很必要？
+retaildata <- readxl::read_excel("D:/Chrome Download/retail.xlsx", skip=1)
+retail <- ts(retaildata[,"A3349873A"], frequency=12, start=c(1982,4))
+
+autoplot(retail)
+
+# 因为随着时间变换，其季节性指数增大（季节性越来越强），只有乘性季节性能够反应这个现象，而加性的则不行。
+
+# b.将Holt-Winters的乘性方法应用于这个数据。尝试使用衰减趋势。
+# Holt-winters
+retail_holt <- hw(retail, seasonal = "multiplicative")
+autoplot(retail_holt)
+
+# Holt-winters with damped
+retail_holt_damped <- hw(retail, seasonal = "multiplicative", damped = TRUE)
+autoplot(retail_holt_damped)
+
+# 用了damped的情况下，预测值上升的较慢
+
+# c.比较两种方法的一步预测的RMSE。你倾向于哪种方法？
+retail_holt_1 <- hw(retail, seasonal = "multiplicative", h = 1)
+retail_holt_damped_1 <- hw(retail, h = 1, seasonal = "multiplicative", damped = TRUE)
+accuracy(retail_holt_1)
+accuracy(retail_holt_damped_1)    
+# 看起来无衰减趋势的模型更好。但由于它们的RMSE几乎一样，而damped可以抑制预测值无限增大，因此带damped的更好一些。
+
+# d.检查最佳方法得到的残差是否看起来像是白噪声。
+checkresiduals(retail_holt_damped)
+# 不是白噪声。:(
+
+# e.现在找到测试集的RMSE，同时将模型训练到2010年底。你可以做得比 3.7 节中练习7的朴素季节性方法更好吗？
+ts_info(retail)
+
+train_retail <- window(retail, end = 2011)
+test_retail <- window(retail, start = 2011)
+
+autoplot(train_retail)
+
+# snaive方法
+retail_naive <- snaive(train_retail, h = 36)
+autoplot(retail_naive)
+
+# holt-winters方法with damped
+retail_3year <- hw(train_retail, h = 36, seasonal = "multiplicative", damped = TRUE)
+autoplot(retail_3year)
+
+# holt_winters方法
+retail_3year_notDamped <- hw(train_retail, h = 36, seasonal = "multiplicative")
+autoplot(retail_3year_notDamped)
+
+# 对比
+autoplot(test_retail) +
+  autolayer(retail_naive, series = "snaive", PI = FALSE) + 
+  autolayer(retail_3year, series = "Multi-hw with damped", PI = FALSE) + 
+  autolayer(retail_3year_notDamped, series = "Multi-hw", PI = FALSE)
+
+accuracy(retail_naive)
+accuracy(retail_3year_notDamped)
+accuracy(retail_3year)   # 对比RMSE，其中，damped为FALSE时能够取得比navie更好的效果。             
+```
+# 9.对于同样的零售数据，请尝试对Box-Cox转换后的时间序列进行STL分解，然后在季节性调整后的数据上使用ETS。这与你之前对测试集的最佳预测相比效果如何？
+```{r}
+
+retail_boxcox_stl_ets <- stlm(train_retail, s.window = 13, robust = TRUE, method = "ets", lambda = BoxCox.lambda(train_retail)) %>% 
+  forecast(h = 36, lambda = BoxCox.lambda(train_retail))
+
+autoplot(retail_boxcox_stl_ets)
+# 不需要使用seasadj函数，因为STL对象的预测是自动将非季节性预测方法应用于季节性调整的数据。
+
+autoplot(test_retail) +
+  autolayer(retail_3year_notDamped, series = "Multi-hw", PI = FALSE) + 
+  autolayer(retail_boxcox_stl_ets, series = "STL + ETS", PI = FALSE)
+
+accuracy(retail_3year_notDamped, test_retail)
+accuracy(retail_boxcox_stl_ets, test_retail)   # RMSE更小
+
+# 比之前的hw方法效果更好了一点
+```
+# 10.本题使用数据集 ukcars，这是从1977年第一季度到2005年第一季度的英国乘用车生产季度数据。
+```{r}
+# a.绘制数据并描述该序列的主要特征。
+autoplot(ukcars) + ggtitle("英国乘用车生产季度数据")
+# 该时间序列拥有先下降后上升的趋势，同时还具有季节性。
+
+# b.使用STL分解该序列并获得季节性调整数据。
+ukcars_stl <- stl(ukcars, s.window = 4, robust=TRUE) %>% seasadj()
+autoplot(ukcars_stl)
+
+# c.使用适用于季节性调整数据的加性衰减趋势方法来对该序列未来两年进行预测。（这可以通过使用 stlf() 函数并设置参数 etsmodel=“AAN”, damped=TRUE 来一步完成。）
+ts_info(ukcars)
+
+ukcars_ANN_damped <- stlf(ukcars, h = 8, etsmodel = "AAN", damped = TRUE)
+autoplot(ukcars_ANN_damped)
+
+# d.使用应用于季节性调整数据的加性趋势方法（如前，但 damped=FALSE）来对该序列的未来两年进行预测。
+ukcars_ANN <- stlf(ukcars, h = 8, etsmodel = "AAN", damped = FALSE)
+autoplot(ukcars_ANN)
+
+# e.现在使用 ets() 为数据选择一个季节性模型。
+ukcars_ets <- ets(ukcars, model = "ZZZ")
+summary(ukcars_ets)   # 自动选取结果给出的季节性模型时ANA模型，加性误差的无衰减趋势的加性季节性模型
+
+# f.将ETS模型的RMSE与使用STL分解获得的模型的RMSE进行比较。哪种方法的样本内拟合效果更好？
+accuracy(ukcars_ets)
+accuracy(ukcars_ANN)
+accuracy(ukcars_ANN_damped)    # STL的方法效果更好，因为RMSE更小。
+
+# g.比较三种方法的预测结果？哪种方法最合理？
+autoplot(ukcars) +
+  autolayer(forecast(ukcars_ets, h = 8), PI = FALSE, series = "ETS") +
+  autolayer(ukcars_ANN_damped, PI = FALSE, series = "STL + ANN with damped") +
+  autolayer(ukcars_ANN, PI = FALSE, series = "STL + ANN")
+
+# 首选方法应该是ukcars_ANN_damped， 因为原始时间序列有趋势性，因此damped参数能够很好处理和步骤这一趋势。
+
+# h.检查你的首选模型的残差。
+checkresiduals(ukcars_ANN_damped)
+# 残差不是白噪声 :(
+```
+# 11.本题使用的数据集 visitors，即1985年5月至2005年4月澳大利亚短期海外游客月度数据。
+```{r}
+# a.绘制该数据的时序图并描述该系列的主要特征。
+autoplot(visitors)   # 上升趋势性，季节性指数随着时间越来越大.
+
+# b.将你的数据分解成一个训练集和一个包含最近两年可用数据的测试集。使用Holt-Winters乘性方法来预测测试集。
+ts_info(visitors)
+
+train_visitors <- window(visitors, end = c(2003, 4))
+test_visitors <- window(visitors, start = c(2003, 4))
+
+visitors_hw <- hw(train_visitors , h = 24, seasonal = "multiplicative")
+autoplot(visitors_hw)
+
+
+# c.为什么这里有必要使用乘性季节性？
+# 因为时间序列的季节性不是一直不变的，而是会随着时间变化的，因此使用乘性季节性很有必要。而加性季节性无法做到捕捉季节性变化的情况。
+
+# d.使用以下每种方法预测两年的测试集： i）ETS模型; ii）应用于Box-Cox变换后的序列的加性ETS模型; iii）朴素季节性方法; iv）将STL分解应用于Box-Cox转换数据，然后将ETS模型应用于季节性调整（转换）数据。
+
+# i)
+visitors_ets <- ets(train_visitors)
+summary(visitors_ets)
+fc_visitors_est <- forecast(train_visitors, h = 24)
+autoplot(fc_visitors_est)
+
+# ii)
+visitors_boxcox_ets <- ets(train_visitors, lambda = BoxCox.lambda(train_visitors), additive.only = TRUE)
+fc_visitors_boxcox_ets <- forecast(visitors_boxcox_ets, h = 24)
+autoplot(fc_visitors_boxcox_ets)
+
+# iii)
+visitors_snaive <- snaive(train_visitors, h = 24)
+autoplot(visitors_snaive)
+
+# iv)
+visitors_stl_ets <- stlm(train_visitors, lambda = BoxCox.lambda(train_visitors), s.window = 13, robust = TRUE, method = "ets")
+fc_visitors_stl_ets <- forecast(visitors_stl_ets, h = 24)
+autoplot(fc_visitors_stl_ets)
+
+# e.哪种方法可以提供最佳预测？它通过了残差测试吗？
+accuracy(fc_visitors_est, test_visitors)
+accuracy(fc_visitors_boxcox_ets, test_visitors)
+accuracy(visitors_snaive, test_visitors)
+accuracy(fc_visitors_stl_ets, test_visitors)     # STL分解的BoxCox转换的ETS模型提供了最佳的训练结果， 而预测结果则是snaive方法最佳。
+
+# f.使用 tsCV() 函数对时间序列进行交叉验证来比较这五种方法，而不是使用训练集和测试集。你是否得出了相同的结论？
+# 创建函数
+fets_add_BoxCox <- function(y, h) {
+  forecast(ets(
+    y,
+    lambda = BoxCox.lambda(y),
+    additive.only = TRUE
+  ),
+  h = h)
+}
+fstlm <- function(y, h) {
+  forecast(stlm(
+    y, 
+    lambda = BoxCox.lambda(y),
+    s.window = frequency(y) + 1,
+    robust = TRUE,
+    method = "ets"
+  ),
+  h = h)
+}
+fets <- function(y, h) {
+  forecast(ets(y),
+           h = h)
+}
+
+# 比较RMSE
+sqrt(mean(tsCV(visitors, snaive, h = 1)^2, na.rm = TRUE))
+sqrt(mean(tsCV(visitors, fets_add_BoxCox, h = 1)^2,
+          na.rm = TRUE))
+sqrt(mean(tsCV(visitors, fstlm, h = 1)^2,
+          na.rm = TRUE))
+sqrt(mean(tsCV(visitors, fets, h = 1)^2, na.rm = TRUE))
+sqrt(mean(tsCV(visitors, hw, h = 1, 
+               seasonal = "multiplicative")^2,
+          na.rm = TRUE))
+
+# tsCV误差显示，最好的模型是STL+ETS(M，A，N)模型，最差的模型是季节性naive模型。如果我没有使用测试集计算准确度，我不可能知道季节性naive法的预测是最准确的。
+```
+# 12.下面的 fets() 函数返回ETS预测值。
+```{r}
+fets <- function(y, h) {
+  forecast(ets(y), h = h)
+}
+
+# a.将 ’tsCV()应用于 $h=4$ 的预测范围，将ETS和朴素季节性方法应用于cement数据，（提示：使用新创建的fets()和现有的snaive()` 函数作为你的预测函数的参数。）
+# b.计算产生的4步向前误差的MSE。（提示：确保删除了缺失值。）为什么会存在缺少值？讨论哪些预测更准确。这是你的预期吗？
+
+# cement不是一个时间序列
+# MSE = mean(tsCV(data, function, h = 4)^2, na.rm = TRUE)
+```
+# 13.在以下六个时间序列上比较 ets()， snaive() 和 stlf()。对于 stlf()，你可能需要使用Box-Cox转换。使用三年的测试集来决定哪一个给出了最佳预测。 ausbeer， bricksq， dole， a10， h02， usmelec。
+```{r}
+# ausbeer 为例
+ts_info(ausbeer)
+
+# 训练集测试集
+train_ausbeer <- window(ausbeer, end = c(2008, 2))
+test_ausbeer <- window(ausbeer, start = c(2008, 2))
+
+## ets
+ausbeer_ets <- ets(train_ausbeer)
+fc_ausbeer_ets <- forecast(ausbeer_ets, h = 12)
+
+## snaive
+ausbeer_snaive <- snaive(train_ausbeer, h = 12)
+
+## stlf
+ausbeer_stlf <- stlf(train_ausbeer, lambda = BoxCox.lambda(train_ausbeer), h = 12, s.window = 5, robust = TRUE)
+
+
+## 对比
+accuracy(fc_ausbeer_ets, test_ausbeer)
+accuracy(ausbeer_snaive, test_ausbeer)
+accuracy(ausbeer_stlf, test_ausbeer)     #  比较RMSE，ets方法的预测效果最好，但是训练效果时stlf方法最好。
+
+```
+# 14.
+```{r}
+# a.在以下系列中使用 ets()：bicoal， chicken， dole， usdeaths， lynx， ibmclose， eggs。它总是给出好的预测吗？
+
+fc_bicoal <- bicoal %>% ets() %>% forecast()
+autoplot(fc_bicoal)
+
+fc_chicken <- chicken %>% ets() %>% forecast()
+autoplot(fc_chicken)
+
+fc_dole <- dole %>% ets() %>% forecast()
+autoplot(fc_dole)
+
+fc_usdeaths <- usdeaths %>% ets() %>% forecast()
+autoplot(fc_usdeaths)
+
+fc_lynx <- lynx %>% ets() %>% forecast()
+autoplot(fc_lynx)
+
+fc_ibmclose <- ibmclose %>% ets() %>% forecast()
+autoplot(fc_ibmclose)
+
+fc_eggs <- eggs %>% ets() %>% forecast()
+autoplot(fc_eggs)
+
+# 并不是总能给出好的预测，比如bicoal的预测结果就不好。
+
+# b.找到一个效果不佳的例子并解释原因。
+# 当数据存在周期性波动（或周期性）时，ets函数似乎无法找到合适的ETS模型，在这种情况下，ets函数无法找到趋势或季节性，只能得出navie的预测。
+```
+
+# 本文件所用到的函数在这： https://github.com/JehyeonHeo/Forecasting_with_R_practices
