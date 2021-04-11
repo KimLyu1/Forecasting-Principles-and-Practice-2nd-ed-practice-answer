@@ -1,0 +1,731 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(fpp2)
+library(xlsx)
+library(urca)
+library(tseries)
+library(TSstudio)
+```
+
+# 1.图8.29分别显示了36个、360个和1000个随机数的自相关图。
+```{r}
+# a.解释这些图的区别，从自相关图来看，图中的数据都是白噪声吗?
+# 就图像而言，看起来它们都是白噪声。
+
+# b.为什么这些临界值到 0 的距离不同？为什么虽然他们都来源于白噪声，但是他们的自相关系数都不同
+# 受到长度影响？？（这题暂时还不会）
+```
+
+# 2.IBM 股票每日收盘价序列（数据集ibmclose）是一个经典的非平稳序列,用R画出它的时序图和自相关图以及偏自相关图。解释为什么图中可以看出序列非平稳并讨论应该如何对数据进行差分。
+```{r}
+ggtsdisplay(ibmclose)
+ts_info(ibmclose)
+
+# 从时序图上看，其趋势为上升又下降，颇为不稳定。暂时看不到很强的季节性。
+# 从偏自相关图来看，当Lag为1时有个明显的突出，意味着其存在季节性（AR(1)），也是非平稳的。
+# 从自相关图来看，则是一个逐渐衰减的图像，r1逼近1，意思是存在趋势，非平稳。
+# 可以尝试对其进行一步差分
+ibmclose %>% diff() %>% ggtsdisplay()  # 这之后时序稍微稳定，但在第250天前后有几个异常点。
+
+# 又或者可以尝试对时间序列先进行log转换以便稳定方差，然后再进行一步差分
+ibmclose %>% log() %>% diff() %>% ggtsdisplay()  # 效果和不进行对数转换差不多。
+```
+
+# 3.对于下列序列，找到合适的Box-Cox变换以及差分的方法以使数据平稳。
+```{r}
+# usnetelec
+ts_info(usnetelec)
+ggtsdisplay(usnetelec)
+# 进行测试
+Box.test(diff(usnetelec), type = "Ljung-Box")
+usnetelec %>% diff() %>% ur.kpss() %>% summary()   # 无论是Ljung-Box还是Kpss test都认为只需要进行一步差分就能够稳定时序。
+
+# usgdp
+ts_info(usgdp)
+ggtsdisplay(usgdp)
+# 进行测试
+nsdiffs(usgdp)  # 不需要季节性差分
+
+Box.test(diff(usgdp), type = "Ljung-Box")   # 非白噪声序列
+ggtsdisplay(diff(usgdp))                    # 还是不太稳定，可以尝试再进行一次差分
+Box.test(diff(diff(usgdp)), type = "Ljung-Box")   # 依然非白噪声序列。（但这可接受）
+ggtsdisplay(diff(diff(usgdp)))              # 看起来平稳多了
+usgdp %>% diff() %>% diff() %>% ur.kpss() %>% summary()   # 其通过了kpss测试，显示序列已经平稳。
+
+# mcopper
+ts_info(mcopper)
+ggtsdisplay(mcopper)   # 末尾的一些观测值上升异常，可以考虑在差分之前先进行log转换。
+# 进行测试
+nsdiffs(log(mcopper)) # 不需要季节性差分
+
+Box.test(diff(log(mcopper)), type = "Ljung-Box")   # 非白噪声序列
+ggtsdisplay(diff(log(mcopper)))                    # 总体上是稳定的，但是似乎方差不稳定，而且1965-1970年间有几个观测值异常。
+mcopper %>% log() %>% diff() %>% ur.kpss() %>% summary()   
+# 通过了kpss测试，尽管它进行差分后不是白噪声，但kpss的结果说明，经过差分后，时序平稳了。
+
+# enplanements
+ts_info(enplanements)
+ggtsdisplay(enplanements)   # 看起来有上升趋势，并且具有季节性。ACF图显示出了这一结果。PACF则显示了在lag为1时，其有一个明显突出，说明该序列是非平稳的。同样的，也可以先进行log转换。
+
+# 进行测试
+enplanements %>% log() %>% nsdiffs()  # 需要季节性差分
+enplanements %>% log() %>% diff(lag=12) %>% ndiffs()  # 还需要进行一步差分
+
+enplanements %>% log() %>% diff(lag=12) %>% diff() %>% Box.test(type = "Ljung-Box")   # 非白噪声
+enplanements %>% log() %>% diff(lag=12) %>% diff() %>% ggtsdisplay()  # 逐渐平稳，但是2002年左右的观测值不稳定。总体是稳定的。
+enplanements %>% log() %>% diff(lag=12) %>% diff() %>% ur.kpss() %>% summary()   # 通过了kpss测试，说明序列已经稳定。
+
+# visitors
+ts_info(visitors)
+ggtsdisplay(visitors) # 看起来有上升趋势，并且具有季节性。ACF图显示出了这一结果。PACF则显示了在lag为1时，其有一个明显突出，说明该序列是非平稳的。同样的，也可以先进行log转换。
+
+# 进行测试
+visitors %>% log() %>% nsdiffs()  # 需要季节性差分
+visitors %>% log() %>% diff(lag=12) %>% ndiffs()   # 还需要进行一步差分
+
+visitors %>% log() %>% diff(lag=12) %>% diff() %>% Box.test(type = "Ljung-Box")  # 未通过Ljung-box测试，且为非白噪声。
+visitors %>% log() %>% diff(lag=12) %>% diff() %>% ggtsdisplay()  # 序列较为平稳。但ACF图显示在lag为12时依然有明显突出
+visitors %>% log() %>% diff(lag=12) %>% diff() %>% ur.kpss() %>% summary()   # 通过了kpss测试，说明序列已经稳定。
+```
+
+# 4.对enplanements数据进行合适的差分，并用延迟算子表示你选择的差分方法。
+```{r}
+## 从上一题知道，此时间序列需要进行一次季节性差分和一步差分。因此可以写成ARIMA(0,1,0)(0,1,0)12, 且要进行对数变换。
+### 模型的表达式可以用延迟算子B表示: 
+### 第一个等式 : wt = (yt^(0) - 1)/(0)
+### 第二个等式 : (1 - B)(1 - B^12)wt = et, et为白噪声序列.
+```
+
+# 5.为你的零售数据（2.10的练习3中的数据）找到合适的差分方法（必要时对数据先进行变换）使数据平稳。
+```{r}
+retaildata <- readxl::read_excel("D:/Chrome Download/retail.xlsx", skip=1)
+retail <- ts(retaildata[,"A3349873A"], frequency=12, start=c(1982,4))
+
+ts_info(retail)
+ggtsdisplay(retail) # 看起来有上升趋势，并且具有季节性。ACF图显示出了这一结果。PACF则显示了在lag为1时，其有一个明显突出，说明该序列是非平稳的。同样的，也可以先进行log转换(尝试使用boxcox方法做)来稳定方差。
+
+# 进行测试
+retail %>% BoxCox(BoxCox.lambda(retail)) %>% nsdiffs()  # 需要季节性差分
+retail %>% BoxCox(BoxCox.lambda(retail)) %>% diff(lag=12) %>% ndiffs()   # 还需要进行一步差分
+
+retail %>% BoxCox(BoxCox.lambda(retail)) %>% diff(lag=12) %>% diff() %>% Box.test(type = "Ljung-Box") 
+# 通过Ljung-box测试，说明为非白噪声。
+retail %>% BoxCox(BoxCox.lambda(retail)) %>% diff(lag=12) %>% diff() %>% ggtsdisplay()  
+# 序列较为平稳。但ACF图显示在lag为12时依然有明显突出
+retail %>% BoxCox(BoxCox.lambda(retail)) %>% diff(lag=12) %>% diff() %>% ur.kpss() %>% summary() # 通过了kpss测试，说明序列已经稳定。
+```
+# 6.使用R来模拟并画出来自于简单ARIMA模型中的一些数据。
+```{r}
+# a.通过下列R代码来从一个 AR(1) 模型中生成数据，该模型的 ϕ1=0.6, σ2=1 且 y1=0 。
+y <- ts(numeric(100))
+e <- rnorm(100)
+    for(i in 2:100)
+       y[i] <- 0.6*y[i-1] + e[i]
+
+# b.画出序列的时序图。当ϕ1 变化时时序图会如何变化？
+ar1generator <- function(phi1){
+  # generate 100 data points from an AR(1) model with input phi1.
+  y <- ts(numeric(100))
+  # error 'e's have variation sigma^2 as 1.
+  e <- rnorm(100)
+  for(i in 2:100){
+    y[i] <- phi1*y[i-1] + e[i]
+  }
+  return(y)
+}
+
+autoplot(ar1generator(0.3), series = "0.3") +
+  geom_line(size = 1, colour = "red") +
+  autolayer(y, series = "0.6", size = 1) +
+  autolayer(ar1generator(0.9), size = 1, series = "0.9") +
+  ylab("AR(1) models") +
+  guides(colour = guide_legend(title = "Phi1"))
+
+# phi越大，y的变化越大。
+
+# c.用你自己的代码从一个θ1=0.6,σ2=1的 MA(1) 模型中生成数据。
+ma1generator <- function(theta1){
+  # generate 100 data points from an MA(1) model with input theta1.
+  y <- ts(numeric(100))
+  # error 'e's have variation sigma^2 as 1.
+  e <- rnorm(100)
+  for(i in 2:100){
+    y[i] <- theta1*e[i-1] + e[i]
+  }
+  return(y)
+}
+
+# d.为这些序列 画出时序图。改变θ1后时序图会如何变化？
+autoplot(ma1generator(0.3), series = "0.3") +
+  geom_line(size = 1, colour = "red") +
+  autolayer(ma1generator(0.6), series = "0.6", size = 1) +
+  autolayer(ma1generator(0.9), size = 1, series = "0.9") +
+  ylab("AR(1) models") +
+  guides(colour = guide_legend(title = "Phi1"))
+
+# thetal越大，y的变化越大。
+
+# e.从ϕ1=0.6, θ1=0.6且 σ2=1的 ARMA(1,1) 模型中生成数据。
+y_arima.1.0.1 <- ts(numeric(50))
+e <- rnorm(50)
+for(i in 2:50){
+   y_arima.1.0.1[i] <- 0.6*y_arima.1.0.1[i-1] + 0.6*e[i-1] + e[i]
+}
+
+# f.从ϕ1=−0.8, ϕ2=0.3且  σ2=1的 AR(2) 模型中生成数据。(请注意这些系数下将会生成非平稳序列。)
+y_arima.2.0.0 <- ts(numeric(50))
+e <- rnorm(50)
+for(i in 3:50){
+   y_arima.2.0.0[i] <- -0.8*y_arima.2.0.0[i-1] + 0.3*y_arima.2.0.0[i-2] + e[i]
+}
+
+# g.对后两个序列作图并进行比较。
+autoplot(y_arima.1.0.1, series = "ARMA(1, 1)") +
+  autolayer(y_arima.2.0.0, series = "AR(2)") +
+  ylab("y") +
+  guides(colour = guide_legend(title = "Models"))
+
+autoplot(y_arima.1.0.1)
+```
+
+# 7.考虑美国每年被谋杀女性数量（每十万人）（数据集 wmurders）。
+```{r}
+# a.通过用R作图和分析，确定合适的ARIMA(p,d,q)模型。
+ts_info(wmurders)
+autoplot(wmurders)   # 没有明显的季节性与异方差性，故不考虑季节性差分与BoxCox转换。仅包含趋势。
+
+# 进行一次差分
+autoplot(diff(wmurders))  # 不是太稳定，应该还需要再一次差分？
+# 测试一下需要多少次差分
+ndiffs(wmurders)    # 看起来需要两次
+
+wmurders %>% diff() %>% diff() %>% Box.test(type = "Ljung-Box")   # 未通过测试，非白噪声
+wmurders %>% diff() %>% diff() %>% ur.kpss() %>% summary()     # 通过了kpss测试，序列稳定
+
+# 查看图像
+wmurders %>% diff() %>% diff() %>% ggtsdisplay()   # ACF图中，lag为1、2时有明显突出，而PACF则时从lag=1开始逐渐衰减。数据可以用ARIMA(0，2，q)或ARIMA(p，2，0)建模，那么用ARIMA(0，2，2)建模试试。
+
+# b.模型中应该包含常数吗？请作出解释。
+# 数据的ARIMA模型包括两次差分。如果模型中有一个常数，那么两次差分将产生二次趋势，这对预测来说是危险的。因此，我不会在模型中包含一个常数。
+
+# c.使用延迟算子写出模型。
+# (1 - B)^2*yt = (1 + theta1*B + theta2*B^2)*et
+
+# d.使用 R 来拟合模型并检验残差。这个模型的表现令人满意吗?
+wmurders_arima.0.2.2 <- Arima(wmurders, order = c(0, 2, 2))
+checkresiduals(wmurders_arima.0.2.2)   # 模型的表现还不错，ACF图是一个白噪声序列，且通过了Ljung-Box测试。
+
+# e.预测之后的三个时间点，进行手算来确保你掌握了计算的过程。
+fc_wmurders_arima.0.2.2 <- forecast(wmurders_arima.0.2.2, h = 3)   # 预测
+
+# ARIMa函数的预测值
+fc_wmurders_arima.0.2.2$mean
+
+# 手算预测值
+fc_wmurders_arima.0.2.2$model
+# 公式
+# (1 - B)^2*yt = (1 - 1.0181*B + 0.1470*B^2)*et
+# yt = 2yt-1 - yt-2 + et - 1.0181*et-1 + 0.1470*et-2
+years <- length(wmurders)
+e <- fc_wmurders_arima.0.2.2$residuals
+
+fc1 <- 2*wmurders[years] - wmurders[years - 1] - 1.0181*e[years] + 0.1470*e[years - 1]   
+
+fc2 <- 2*fc1 - wmurders[years] + 0.1470*e[years]
+
+fc3 <- 2*fc2 - fc1
+
+# forecasts by manual calculation
+c(fc1, fc2, fc3)
+
+# f.对序列以及三个预测值作图并给出未来三个时间点的预测区间。
+autoplot(fc_wmurders_arima.0.2.2)
+
+# g.auto.arima()函数和你选择的模型一样吗？你觉得哪一个模型更好？
+auto.arima(wmurders)    # ARIMA(1,2,1) 默认参数下
+
+wmurders_arima.1.2.1 <- Arima(wmurders, order = c(1, 2, 1))
+checkresiduals(wmurders_arima.0.2.2)
+
+fc_wmurders_arima.1.2.1 <- forecast(wmurders_arima.1.2.1, h = 3)   # 预测
+
+accuracy(fc_wmurders_arima.0.2.2)
+accuracy(fc_wmurders_arima.1.2.1)   # auto.arima的较好
+
+## 设置参数下
+auto.arima(wmurders, stepwise = FALSE, approximation = FALSE)   # ARIMA(0,2,3) 
+
+wmurders_arima.0.2.3 <- Arima(wmurders, order = c(0, 2, 3))
+fc_wmurders_arima.0.2.3 <- forecast(wmurders_arima.0.2.3, h = 3) 
+
+checkresiduals(wmurders_arima.0.2.2)
+checkresiduals(wmurders_arima.0.2.3)
+
+accuracy(fc_wmurders_arima.0.2.2)
+accuracy(fc_wmurders_arima.0.2.3)   # 设置参数stepwise 和 approximation为False后得出的ARIMA(0,2,3) 模型效果最好, 当然ARIMA(0,2,2)也不差，从模型简便原则来说，选择ARIMA(0,2,2)也可以，因为没那么复杂。
+
+```
+
+# 8.考虑澳大利亚 1980 年到 2015 年的国际游客总数（百万）。（数据集austa）
+```{r}
+# a.使用auto.arima()来找到一个合适的ARIMA模型。auto.arima()选择了什么模型？残差看起来是不是白噪声？对未来十个时间点进行预测并画图。
+ts_info(austa)
+
+fc_austa_011 <- forecast(auto.arima(austa), h = 10)  
+fc_austa_011$model             # 给出了带漂移的ARIMA(0,1,1)
+checkresiduals(austa_011)    # 是的看起来是白噪声
+autoplot(fc_austa_011)
+
+
+# b.画出不带漂移的 ARIMA(0,1,1) 模型并与 a 中的模型进行比较，去掉 MA 的部分并再次画图。
+austa_011_Arima <- Arima(austa, order = c(0,1,1))
+fc_austa_011_Arima <- forecast(austa_011_Arima, h = 10)
+
+fc_austa_011$model              # 带drift的AICc较小。
+fc_austa_011_Arima$model
+
+# 去掉MA，即(0,1,0)
+austa_010_Arima <- Arima(austa, order = c(0,1,0))
+fc_austa_010_Arima <- forecast(austa_010_Arima, h = 10)
+
+autoplot(fc_austa_011_Arima, PI = FALSE) +
+  autolayer(fc_austa_010_Arima, series = "Arima(0,1,0)", PI = FALSE)
+# 它们的结果与navie方法非常像。
+
+fc_austa_010_Arima$model             
+fc_austa_011_Arima$model       # Arima(0,1,1)的AICc较小。
+
+# c.画出带漂移的 ARIMA(2,1,3) 模型，去掉常数看一看会发生什么。
+fc_austa_arima_213 <- forecast(Arima(austa, order = c(2,1,3), include.drift = TRUE), h = 10)
+autoplot(fc_austa_arima_213)
+
+# 去掉常数
+drift_austa <- fc_austa_arima_213$model$coef[6]
+fc_austa_arima_213_nodrift <- fc_austa_arima_213$mean - drift_austa*seq_len(10)
+
+autoplot(fc_austa_arima_213) +
+  autolayer(fc_austa_arima_213_nodrift)
+# 去掉常数后预测会不准确，捕捉不到上升的趋势。
+
+# d.画出带常数的 ARIMA(0,0,1) 模型，去掉MA的部分并再次画图。
+fc_austa_arima_001 <- forecast(Arima(austa, order = c(0,0,1), include.constant = TRUE), h = 10)
+fc_austa_arima_000 <- forecast(Arima(austa, order = c(0,0,0), include.constant = TRUE), h = 10)
+
+autoplot(fc_austa_arima_001, PI = FALSE) + autolayer(fc_austa_arima_000, PI = FALSE)
+# 似乎是按照历史均值预测了，不是那么的令人满意。
+
+# e.画出不带常数的 ARIMA(0,2,1) 模型的预测值。
+fc_austa_arima_021 <- forecast(Arima(austa, order = c(0,2,1), include.constant = FALSE), h = 10)
+autoplot(fc_austa_arima_021)
+
+# 模型很好的捕捉到了上升趋势，看起来还不错。预测区间也随着时间增大。
+```
+# 9.对于usgdp序列:
+```{r}
+# a.如果必要的话，对数据进行合适的Box-Cox变换。
+ts_info(usgdp)
+autoplot(usgdp) 
+autoplot(BoxCox(usgdp, lambda = BoxCox.lambda(usgdp)))     # box-cox转换可以使数据更具有线性，因此可以使用BoxCox转换。
+
+# b.通过auto.arima()为数据找到一个合适的ARIMA模型。
+usgdp_lambda <- BoxCox.lambda(usgdp)
+usgdp_autoarima <- auto.arima(usgdp, lambda = usgdp_lambda)
+usgdp_autoarima    # 给出ARIMA(2,1,0) with drift  模型
+
+# c.通过调参来尝试一些其他的可行模型。
+# 通过设置stepwise 和 approximation参数
+usgdp_autoarima_paremeters <- auto.arima(usgdp, lambda = usgdp_lambda, stepwise = FALSE, approximation = FALSE)
+usgdp_autoarima_paremeters  # 给出ARIMA(0,1,2) with drift
+
+# d.选择你认为的最优模型并进行残差诊断。
+accuracy(usgdp_autoarima)
+accuracy(usgdp_autoarima_paremeters)   # 两个模型的RMSE几乎一样，随便选。
+
+checkresiduals(usgdp_autoarima)
+checkresiduals(usgdp_autoarima_paremeters)    # 他们的残差都是白噪声。
+
+# e.用你拟合的模型进行预测，预测值看起来合理吗？
+fc_usgdp_autoarima <- forecast(usgdp_autoarima)
+fc_usgdp_autoarima_paremeters <- forecast(usgdp_autoarima_paremeters)
+
+autoplot(fc_usgdp_autoarima, series = "ARIMA(2,1,0) with drift", PI = FALSE) +
+  autolayer(fc_usgdp_autoarima_paremeters, series = "ARIMA(0,1,2) with drift", PI = FALSE)   # 看起来是合理的
+
+
+
+# f.将你的结果和使用ets()得到的模型（不对数据进行变换）进行比较。
+usgdp_ets <- ets(usgdp)
+fc_usgdp_ets <- forecast(usgdp_ets)
+
+accuracy(fc_usgdp_autoarima_paremeters)
+accuracy(fc_usgdp_ets)
+
+autoplot(fc_usgdp_autoarima_paremeters, series = "Arima", PI = FALSE) + 
+  autolayer(fc_usgdp_ets, series = "ets", PI = FALSE)
+# 单比较RMSE的话，Arima比较优， 但预测值的话，ets稍微好一些？
+```
+# 10.考虑austourists序列，它记录的是澳大利亚 1999 到 2010 年之间的季度国际游客总数。
+```{r}
+# a.画出时序图并进行描述。
+autoplot(austourists)   # 上升趋势，具有季节性，方差不稳定。
+
+# b.你可以从自相关图中得到什么信息？
+ggtsdisplay(austourists)   # 当lag = 4，8，12时呈逐步衰减趋势
+
+# c.你可以从偏自相关图中得到什么信息？
+ggtsdisplay(austourists)   # 在lag = 1，3，5，8时有明显突起。
+
+# d.对季节性差分数据(1−B4)Yt画图。图象符合什么模型的特征？
+ggtsdisplay(diff(austourists, lag = 4))
+
+# 季节性差分的数据看起来至少需要一个更多的差分来使其稳定。
+# 对于滞后4倍的数值，只是在滞后4时有显著的峰值。对于ACF和PACF图也是一样的。季节性ARIMA模型的顺序可以是(1，1，0)[4]或(0，1，1)[4]。我选择(1, 1, 0)[4]的顺序。
+# 不考虑滞后4的值，自相关值看起来像正弦递减，而部分自相关值在滞后1和5有峰值。在滞后2和3处没有明显的尖峰。
+# 我认为，滞后5的尖峰并不意味着在第5滞后值还有重要的信息没有使用。它应该是正向显著的，因为在季节性差分后，在第4滞后有一个大的负向显著的尖峰。
+# 再做一次差分后画出PACF图，就能发现这个问题。
+ggtsdisplay(diff(diff(austourists, lag = 4)))
+# 因此可以选择ARIMA(1, 1, 0)(1, 1, 0)[4] 模型.
+
+# e.auto.arima()和你选择的模型一样吗？你觉得哪个模型更优？
+austourists_autoarima <- auto.arima(austourists)     # 给出ARIMA(1,0,0)(1,1,0)[4] with drift 
+fc_austourists_autoarima <- forecast(austourists_autoarima)
+
+
+# 自己的
+austourists_110 <- Arima(austourists, order = c(1,1,0), seasonal = c(1,1,0))
+fc_austourists_110 <- forecast(austourists_110)
+
+accuracy(fc_austourists_autoarima)       # 单独对比RMSE的话，auto.arima给出的模型更好。
+accuracy(fc_austourists_110)
+
+# f.用延迟算子表示模型，之后再用其他的方式来表示模型。
+fc_austourists_autoarima$model
+# (1 - phi1*B)(1 - phis1*B)(1 - B^4)(yt - c*t) = et
+# c = drift*(1 - phi1)(1 - phis1)*m^D = 1.7793
+
+# (1 - phi1*B - phis1*B + phi1*phis1*B^2)(1 - B^4)(yt - c*t) =
+# (1 - phi1*B - phis1*B + phi1*phis1*B^2 - B^4 + phi1*B^5 + phis1*B^5 - phi1*phis1*B^6)(yt - c*t) = et
+# yt = c + (phi1 + phis1)*yt-1 - phi1*phis1*yt-2 + yt-4 - (phi1 + phis1)*yt-5 + phi1*phis1*yt-6 + et
+# yt = 1.7793 - 0.06*yt-1 + 0.2496*yt-2 + yt-4 + 0.06*yt-5 - 0.2496*yt-6 + et
+
+# 我数学较差，搞了半天还是不懂延迟算子，上面的算式来自Readme文件中所提到的那位作者。
+```
+
+# 11.考虑美国 1973 年 1 月到 2013 年 6 月的每月电网发电总量（十亿千瓦时）。(数据集usmelec)一般每年在夏季和冬季会各出现一次高峰。
+```{r}
+# a.使用序列的 12 月移动平均值来分析序列包含什么趋势。
+# 2阶移动平均
+usmelec_ma2x12 <- ma(usmelec, order = 12, centre = TRUE)
+autoplot(usmelec) +
+  autolayer(usmelec_ma2x12)  # 逐渐上升的趋势，2008-09年有突然下降。
+
+# b.数据需要进行变换吗？如果必要的话，请进行合适的变换。
+autoplot(usmelec)    # 需要进行变换，因为它的差值随着时间越来越大。
+lambda_usmelec <- BoxCox.lambda(usmelec)
+usmelec_BoxCox <- BoxCox(usmelec, lambda_usmelec)
+autoplot(usmelec_BoxCox)
+
+# c.数据是平稳的吗？如果不是的话，请对数据进行合适的差分来获得平稳数据。
+# 以变换后的数据做分析
+ts_info(usmelec)
+
+
+ggtsdisplay(usmelec_BoxCox)    # 很明显不是平稳的
+usmelec_BoxCox %>% ndiffs()   # 需要季节性差分
+usmelec_BoxCox %>% diff(lag = 12) %>% ndiffs()  # 还需要一次一步差分
+usmelec_BoxCox %>% diff(lag = 12) %>% diff() %>% ggtsdisplay()
+usmelec_BoxCox %>% diff(lag = 12) %>% diff() %>% Box.test(type = "Ljung-Box")    # 未通过Ljung-Box测试
+usmelec_BoxCox %>% diff(lag = 12) %>% diff() %>% ur.kpss() %>% summary()     # 但是通过了kpss测试
+
+# d.找到一些可能在描述时间序列时有用的ARIMA模型，根据AIC值来判断最优模型。
+usmelec_BoxCox %>% diff(lag = 12) %>% diff() %>% ggtsdisplay()
+# ACF图中，有好几处明显的突起，PACF也是一样，根据突起的数量，可以尝试ARIMA(2,1,0)(1,1,0)[12]或者ARIMA(0,1,2)(0,1,1)[12]
+usmelec_BoxCox_arima210_110 <- Arima(usmelec_BoxCox, order = c(2,1,0), seasonal = c(1,1,0))
+usmelec_BoxCox_arima012_011 <- Arima(usmelec_BoxCox, order = c(0,1,2), seasonal = c(0,1,1))
+summary(usmelec_BoxCox_arima210_110)
+summary(usmelec_BoxCox_arima012_011)   # ARIMA(0,1,2)(0,1,1)[12]较好（比较AICc值）
+
+# e.估计你选择的最优模型的参数并对残差进行诊断和检验。残差看起来像白噪声吗？如果不是的话，尝试去找到一个效果更好的模型。
+checkresiduals(usmelec_BoxCox_arima012_011)   # 勉强是一个白噪声，但是处于不是白噪声的边界
+
+# 可以尝试使用auto.arima()来自动选择一个
+usmelec_BoxCox_autoarima <- auto.arima(usmelec_BoxCox)
+usmelec_BoxCox_autoarima   # 给出ARIMA(1,1,3)(2,1,1)[12] 
+# 设置参数再找一个
+usmelec_BoxCox_autoarima_parameter <- auto.arima(usmelec_BoxCox, stepwise = FALSE, approximation = FALSE)
+usmelec_BoxCox_autoarima_parameter    # 给出ARIMA(1,1,1)(2,1,1)[12]
+
+summary(usmelec_BoxCox_autoarima)
+summary(usmelec_BoxCox_autoarima_parameter)    # ARIMA(1,1,1)(2,1,1)[12]的AICc值更小
+
+# 检查残差
+checkresiduals(usmelec_BoxCox_autoarima_parameter)  # 也勉强是一个白噪声序列
+
+
+# f.请预测未来15年的美国发电量，对比the EIA上的数据来分析预测的准确率。
+fc_usmelec_BoxCox_autoarima_parameter <- forecast(usmelec_BoxCox_autoarima_parameter, h = 180)
+autoplot(usmelec_BoxCox) + 
+  autolayer(fc_usmelec_BoxCox_autoarima_parameter)
+
+# g.你认为你的模型可以对未来多少年的发电量进行有效的预测？
+# 若控制在合理范围内，2-3最多。
+```
+# 12.对mcopper数据：
+```{r}
+# a.如果必要的话，对数据进行合适的 Box-Cox 变换；
+autoplot(mcopper)   # 还是换一下的好，因为其末尾有指数型增长
+mcopper_lambda <- BoxCox.lambda(mcopper)
+
+# b.通过auto.arima()为数据找到一个合适的ARIMA模型；
+mcopper_autoarima <- auto.arima(mcopper, lambda = mcopper_lambda)   # 给出ARIMA(0,1,1) 
+
+# c.通过调参来尝试一些其他的可行模型；
+mcopper_autoarima_parameters <- auto.arima(mcopper, lambda = mcopper_lambda, stepwise = FALSE, approximation = FALSE)  
+# 一样给出ARIMA(0,1,1)
+# 那就手动选一个
+ndiffs(mcopper)   # 要一次一步差分
+nsdiffs(mcopper)  # 不需要季节差分
+ggtsdisplay(diff(mcopper))  # 根据突起的数量，我们手动选择ARIMA(1,1,0)
+
+# d.选择你认为的最优模型并进行残差诊断；
+mcopper_arima110 <- Arima(mcopper, lambda = mcopper_lambda, order = c(1,1,0))
+
+accuracy(mcopper_autoarima)  # AICc = -86.08
+accuracy(mcopper_arima110)   # AICc = -75.64     # 对比之后，ARIMA(0,1,1)较好
+
+checkresiduals(mcopper_autoarima)   # Ljung-Box测试通过，ACF图也没有明显突起，分布也近似正态，因此残差是白噪声序列。
+
+# e.用你拟合的模型进行预测，预测值看起来合理吗？
+fc_mcopper_autoarima <- forecast(mcopper_autoarima, lambda = mcopper_lambda)
+
+autoplot(mcopper) +
+  autolayer(fc_mcopper_autoarima)    # 预测值看起来怪怪的，但又不知道怎么说，感觉夸大了预测值
+
+# 用ARIMA(1,1,0)试试看
+fc_mcopper_arima110 <- forecast(mcopper_arima110, lambda = mcopper_lambda)
+
+autoplot(mcopper) +
+  autolayer(fc_mcopper_arima110)     # 一样的结果，非常相似
+# 也许用其他方法能够得出更好的预测值
+
+# f.将你的结果和使用ets()得到的模型（不对数据进行变换）进行比较。
+mcopper_ets <- ets(mcopper)
+fc_mcopper_ets <- forecast(mcopper_ets)
+
+autoplot(mcopper) +
+  autolayer(fc_mcopper_autoarima, series = "ARIMA", PI = FALSE) +
+  autolayer(fc_mcopper_ets, series = "ETS", PI = FALSE)
+# 看起来ets模型稍微合理一些，因为其捕捉到了下降的趋势（可能是2008年金融危机导致)
+```
+# 13.在hsales,auscafe,qauselec,qcement,qgas这五个季节性时间序列中任选一个。
+```{r}
+# a.数据需要进行变换吗？如果需要，则对其进行合适的变换。
+# 选hsales
+autoplot(hsales)  # 趋势与季节性，且季节性指数是变化的，因此可以考虑BoxCox变换。
+lambda_hsales <- BoxCox.lambda(hsales)
+
+# b.数据是平稳的吗？如果不是的话，请对数据进行合适的差分来获得平稳数据。
+ts_info(hsales)
+ggtsdisplay(hsales)   # 很明显不是平稳的
+
+hsales %>% BoxCox(lambda = lambda_hsales) %>% nsdiffs()  # 需要季节差分
+hsales %>% BoxCox(lambda = lambda_hsales) %>% diff(lag = 12) %>% diff() %>% Box.test(type = "Ljung-Box")   # 通过了Ljung-Box测试
+hsales %>% BoxCox(lambda = lambda_hsales) %>% diff(lag = 12) %>% diff() %>% ur.kpss() %>% summary()  # 通过了kpss测试
+hsales %>% BoxCox(lambda = lambda_hsales) %>% diff(lag = 12) %>% diff() %>% ggtsdisplay()   # 明显的稳定了时间序列
+
+# c.找到一些可能在描述时间序列时有用的ARIMA模型，根据AIC值来判断最优模型。
+# 根据上一图的ACF图，只在lag=12时有明显突起，其他都没有。而PACF图中是lag=12，24，36时逐渐衰减，因此可以选用ARIMA(0,1,0)(0,1,1)12试试。
+hsales_arima000_001 <- Arima(hsales, lambda = lambda_hsales, order = c(0,1,0), seasonal = c(0,1,1))
+
+# 尝试使用自动选择与调参
+hsales_autoarima <- auto.arima(hsales, lambda = lambda_hsales)
+hsales_autoarima_parameter <- auto.arima(hsales, lambda = lambda_hsales, stepwise = FALSE, approximation = FALSE)
+
+summary(hsales_arima000_001)    # AICc=-213.29 
+summary(hsales_autoarima)     # AICc=-151.44
+summary(hsales_autoarima_parameter)   # AICc=-175.85
+
+# 比较AICc值的话，手动选择的模型更好一些。
+
+# d.估计你选择的最优模型的参数并对残差进行诊断和检验，残差看起来像白噪声吗？如果不是的话，尝试去找到一个效果更好的模型。
+# thetas1 = -1
+checkresiduals(hsales_arima000_001)   # 通过了Ljung-Box测试，且ACF图中没有明显的突起，因此残差是白噪声序列。
+
+# e.用你选择的模型预测未来24个月的数据。
+fc_hsales_arima000_001 <- forecast(hsales_arima000_001, lambda = lambda_hsales, h = 24)
+autoplot(fc_hsales_arima000_001)
+
+# f.将你的预测和使用ets()进行的预测进行对比。
+fc_hsales_ets <- forecast(ets(hsales), h = 24)
+autoplot(fc_hsales_ets)
+
+accuracy(fc_hsales_arima000_001)  # 这两个模型的结果几乎一样。
+accuracy(fc_hsales_ets)
+```
+# 14.对于上一题中的序列，尝试对数据进行季节性时间序列处理（STL），并使用非季节性模型对处理后的数据进行建模。stlf()函数可以简化你的计算（method="arima"）。将新模型的预测结果与上一题的模型进行对比。你觉得哪个模型更优?
+```{r}
+fc_hsales_stlf <- stlf(
+  hsales, lambda = BoxCox.lambda(hsales),
+  s.window = 13, robust = TRUE, method = "arima",
+  h = 24
+)
+
+# 对比
+autoplot(fc_hsales_arima000_001)      # stl模型其图像细节更多，更精细。
+autoplot(fc_hsales_stlf)
+
+accuracy(fc_hsales_arima000_001)
+accuracy(fc_hsales_stlf)    # stl分解后的模型更好一点，RMSE更小
+```
+
+# 15.对于第 5 题中的零售数据：
+```{r}
+# a.找到一个合适的季节性ARIMA模型；
+ts_info(retail)
+# 直接自动寻找
+retail_autoarima <- auto.arima(retail, lambda = BoxCox.lambda(retail))      # ARIMA(1,1,2)(0,1,1)[12]
+fc_retail_autoarima <- forecast(retail_autoarima, h = 24)
+autoplot(fc_retail_autoarima)
+
+# b.和你在前面章节的模型的预测结果进行对比；
+# 前面章节所使用的方法时snaive
+retail_snaive <- snaive(retail, h = 24)
+autoplot(fc_retail_autoarima)
+autoplot(retail_snaive)
+
+accuracy(fc_retail_autoarima)    # ARIMA模型更胜一筹
+accuracy(retail_snaive)
+
+# c.从网站ABS website(Cat 8501.0,Table 11) 获最新数据，并比较你的预测值与真实值。你觉得你的各个模型的预测效果如何？
+retaildata_new <- read.xlsx("D:/Chrome Download/8501011.xls", sheetName = "Data1", startRow = 10)
+retail_new <- ts(retaildata_new[,"A3349873A"], frequency=12, start=c(1982,4), end = c(2015,12))
+
+ts_info(retail)
+ts_info(retail_new)
+
+autoplot(retail_new) + 
+  autolayer(fc_retail_autoarima, series = "ARIMA Forecast", PI = FALSE) +
+  autolayer(retail_snaive, series = "Snaive", PI = FALSE)
+# 预测值比真实值小了不少，但真实值都在预测区间内。其中，ARIMA模型效果较好。
+
+```
+# 16.考虑数据集sheep，从1867年到1938年英格兰和威尔士的山羊数量。
+```{r}
+# a.画出时序图。
+autoplot(sheep)     # 逐渐下降的趋势
+
+
+
+# b.假设你决定用下列模型进行拟合:yt=yt−1+ϕ1(yt−1−yt−2)+ϕ2(yt−2−yt−3)+ϕ3(yt−3−yt−4)+εt,这里的εt是白噪声序列，你觉得这是什么ARIMA模型（即 p, d和q的值是多少）？
+
+# (yt - yt-1) - phi1(yt-1 - yt-2) - phi2(yt-2 - yt-3) - phi3(yt-3 - yt-4) = et
+# (1 - B)yt - phi1*B(1- B)yt - phi2*B^2(1- B)yt - phi3*B^3(1- B)yt = et
+# (1 - phi1*B - phi2*B^2 - phi3*B^3)(1 - B)yt = et
+# 因此是ARIMA(3, 1, 0) model.
+
+
+# c.通过检查差分数据的自相关图和偏自相关图，解释为什么模型是合适的。
+sheep %>% ndiffs()   # 需要一次一步差分
+sheep %>% diff() %>% ggtsdisplay()
+# ACF图显示自相关值呈正弦递减，而PACF图显示滞后1～3时有显著的峰值，但滞后3以后没有。因此ARIMA(3，1，0)是合适的。
+
+# d.序列最后的五个值如下表所示:
+# 年	            1935	1936	1937	1938	1939
+# 绵羊数量/百万 	1648	1665	1627	1791	1797
+# 参数估计为:  ϕ1=0.42，ϕ2=−0.20，and ϕ3=−0.30。 在不使用forecast函数的情况下，自行计算之后三年（1940–1942）的预测值。
+
+sheep.1940 = 1797 + 0.42*(1797 - 1791) -0.20*(1791 - 1627) - 0.30*(1627 - 1665)
+
+sheep.1941 = sheep.1940 + 0.42*(sheep.1940 - 1797) -0.20*(1797 - 1791) - 0.30*(1791 - 1627)
+
+sheep.1942 = sheep.1941 + 0.42*(sheep.1941 - sheep.1940) -0.20*(sheep.1940 - 1797) - 0.30*(1797 - 1791)
+
+c(sheep.1940, sheep.1941, sheep.1942)
+
+# e.使用R对模型进行拟合，并使用forecast进行预测。得到的预测和你之前计算的有区别吗？为什么？
+ts_info(sheep)
+sheep_Arima <- Arima(sheep, order = c(3,1,0))
+fc_sheep_Arima <- forecast(sheep_Arima, h = 3)
+fc_sheep_Arima$mean   # 手算和函数的结果相差不大。但是随着预测年份的增大，其差异也在变大，可能的原因是函数里使用的phi不同。
+
+ar1 <- fc_sheep_Arima$model$coef[1]
+ar2 <- fc_sheep_Arima$model$coef[2]
+ar3 <- fc_sheep_Arima$model$coef[3]
+
+sheep.1940.new = 1797 + ar1*(1797 - 1791) + ar2*(1791 - 1627) + ar3*(1627 - 1665)
+
+sheep.1941.new = sheep.1940.new + ar1*(sheep.1940.new - 1797) + ar2*(1797 - 1791) + ar3*(1791 - 1627)
+
+sheep.1942.new = sheep.1941.new + ar1*(sheep.1941.new - sheep.1940.new) + ar2*(sheep.1940.new - 1797) + ar3*(1797 - 1791)
+
+c(sheep.1940.new, sheep.1941.new, sheep.1942.new)
+# 确认是参数不同所造成的差异
+
+```
+
+# 17.数据集bicoal 为美国 1920 年到 1968 年的 烟煤年产量。
+```{r}
+# a.画出时序图。
+autoplot(bicoal)    # 无明显特征
+
+# b.用下列模型拟合数据：yt=c+ϕ1yt−1+ϕ2yt−2+ϕ3yt−3+ϕ4yt−4+εt这里的 yt是年份 t的煤产量，εt是白噪声序列。这是什么ARIMA模型（即p, d和 q的值是多少）？
+
+# (1 - phi1*B - phi2*B^2 - phi3*B^3 - phi4*B^4)*yt = c + et
+# 如果 mu 是 yt的平均值的话,
+# c = mu*(1 - phi1*B - phi2*B^2 - phi3*B^3 - phi4*B^4)
+# 模型为 ARIMA(4, 0, 0) or AR(4).
+
+# c.使用自相关图和偏自相关图来解释为什么选择这个模型。
+ggtsdisplay(bicoal, lag.max = 36)
+# ACF图显示自相关值呈正弦递减。PACF图显示在滞后1和4处有显著的峰值，但滞后4以后没有。因此AR（4）模型是合适的选择。
+
+# d.序列最后的五个值如下表所示:
+# 年份	           1964	1965	1966	1967	1968
+# 煤产量/百万吨	   467	 512	 534	 552 	 545
+
+# The estimated parameters are c=162.00,ϕ1=0.83,ϕ2=−0.34 ,ϕ3=0.55,andϕ4=−0.38. 在不使用forecast函数的情况下，自行计算之后三年（1969–1971）的预测值。
+
+c <- 162.00
+phi1 <- 0.83 
+phi2 <- -0.34
+phi3 <- 0.55
+phi4 <- -0.38
+
+bicoal.1969 <- c + phi1*545 + phi2*552 + phi3*534 + phi4*512
+
+bicoal.1970 <- c + phi1*bicoal.1969 + phi2*545 + phi3*552 + phi4*534
+
+bicoal.1971 <- c + phi1*bicoal.1970 + phi2*bicoal.1969 + phi3*545 + phi4*552
+
+c(bicoal.1969, bicoal.1970, bicoal.1971)
+
+# e.使用R对模型进行拟合，并使用forecast进行预测。得到的预测和你之前计算的有区别吗？为什么？
+ts_info(bicoal)
+bicoal_Arima <- Arima(bicoal, order = c(4,0,0))
+fc_bicoal_Arima <- forecast(bicoal_Arima, h = 3)
+
+c(bicoal.1969, bicoal.1970, bicoal.1971)
+fc_bicoal_Arima$mean    # sheep数据集中一样的问题也出现在了这，是因为参数不同导致的差值越来越大（计算方法在上一题中）
+```
+# 18.在做这个练习之前，你需要安装程序包rdatamarket使用如下命令：
+```{r}
+# 我的R语言版本无法安装该包，因此没有解决方案。
+# 如能够安装该包，可以参考这里：https://github.com/JehyeonHeo/Forecasting_with_R_practices
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
