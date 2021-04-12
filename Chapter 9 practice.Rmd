@@ -1,0 +1,297 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(fpp2)
+library(TSstudio)
+library(xlsx)
+```
+
+# 1.数据集advert中包含汽车零部件的月度销售额和广告支出。
+```{r}
+# a.使用autoplot函数绘制上述数据。参数facets=TRUE可以起到什么样的作用？
+autoplot(advert, facets = TRUE)    # 参数facets可以将每列数据可视化
+
+# b.利用tslm()函数拟合标准回归模型yt=a+bxt+ηt，其中yt代表销售额， xt代表广告支出。
+advert_tslm <- tslm(sales ~ advert, data = advert)
+
+# c.证明残差具有显著的自相关性。
+checkresiduals(advert_tslm)   # Ljung-Box测试显示其残差非白噪声序列，并且ACF图中也证明了该情况。
+ 
+# d.当采用Arima模型时会有什么不同？
+advert_dreg000 <- Arima(
+  advert[, "sales"], xreg = advert[, "advert"],
+  order = c(0, 0, 0)
+)
+
+checkresiduals(advert_dreg000)    # 残差的自相关性更显著了。而ACF图基本一致。
+
+# e.使用auto.arima()函数重新拟合。误差模型的参数估计有什么差异？应选用哪种 ARIMA 模型拟合残差？
+advert_autoarima <- auto.arima(advert[, "sales"], xreg = advert[, "advert"])    # 该模型没有考虑广告支出的影响。
+
+summary(advert_dreg000)   # intercept = 78.7343 , xreg = 0.5343
+summary(advert_autoarima) # xreg = 0.5063
+
+checkresiduals(advert_autoarima)  # autoArima方法中，其残差为白噪声序列。  因此，选用自动拟合的ARIMA模型更好。
+
+# f.检验拟合模型的残差。
+checkresiduals(advert_autoarima)
+
+autoplot(advert[, "sales"], series = "Data") +
+  geom_line(color = "red", size = 1) +
+  autolayer(advert_autoarima$fitted, size = 1, series = "Dynamic Regression fitted values") +
+  autolayer(advert_tslm$fitted.values, size = 1, series = "Linear Regression fitted values") +
+  ylab("Sales volume")
+
+accuracy(advert_autoarima)  
+accuracy(advert_tslm)
+# 从以上可知，autoARIMA得出的ARIMA(0,1,0) errors 模型是更好的选择。
+
+# g.假设未来六个月的广告支出为每月十个单位，通过模型预测月度销售额，并生成预测区间。
+ts_info(advert)
+fc_advert_autoarima <- forecast(
+  advert_autoarima, h = 6,
+  xreg = rep(10, 6)
+  )
+
+autoplot(fc_advert_autoarima)
+```
+# 2.本练习中，数据集huron为1875年到1972年间休伦湖的水位。
+```{r}
+# a.采用分段线性趋势模型拟合上述数据，分段的节点位于1920年，并采用 ARMA 模型表示误差项。
+autoplot(huron)
+
+# 设定时间锚点
+t <- time(huron)
+tk <- 1920
+
+# 建模
+# 使 t_pw 变量成为一个包含计件时间的向量。t_pw中的值在结点年(1920)之前的所有年份都是0。但随着结点年后年份的增加，其值会增加。
+t_pw <- ts(pmax(0, t - tk), start = t[1])
+huron_xreg <- cbind(t = t, t_pw = t_pw)
+huron_dreg_auto <- auto.arima(
+  huron, xreg = huron_xreg
+)
+
+huron_dreg_auto    # ARIMA(2,0,0) errors 模型
+
+autoplot(huron) +
+  autolayer(huron_dreg_auto$fitted)
+
+# b.预测未来三十年休伦湖的水位。
+ts_info(huron)
+
+# 创建新的xreg
+t_30 <- t[length(t)] + seq(30)
+t_pw_30 <- t_pw[length(t_pw)] + seq(30)
+huron_xreg_30 <- cbind(t_30 = t_30, t_pw_30 = t_pw_30)
+
+# 预测
+fc_huron_dreg_auto <- forecast(huron_dreg_auto, h = 30, xreg = huron_xreg_30)
+
+autoplot(fc_huron_dreg_auto)
+
+checkresiduals(fc_huron_dreg_auto)     # ACF图中没有明显的突起，且通过了Ljung-Box测试，但似乎其分布不是正态的。
+```
+# 3.本练习中使用的数据集为motel：1980年1月到1995年6月间，澳大利亚维多利亚中酒店、汽车旅馆和宾馆的住宿总月收入和总房间数。总月收入的单位为千澳元，总房间数的单位为千。
+```{r}
+# a.使用以上数据计算维多利亚州住宿一晚的平均费用。
+autoplot(motel, facets = TRUE)
+
+
+motel[, "Takings"]/motel[,"Roomnights"] -> avg_cost_motel
+
+mean(avg_cost_motel)  # 0.0607 千澳元
+autoplot(avg_cost_motel) 
+
+# b.估计月度 CPI。
+# c.绘制两个变量的时间序列图，并解释为什么在建模之前要对两个变量取对数。
+# d.利用 ARIMA 误差项拟合出合适的回归模型。解释你生成最终模型的过程。
+# e.使用拟合出的模型预测未来12个月每间客房的平均价格。（提示：应首先预测CPI数据）
+
+# 我的motel数据中没有名为CPI的列，无法完成剩余问题。
+```
+# 4.在5.10节的练习6中，我们采用谐波回归模型拟合了gasoline序列数据。现在我们利用包含 ARMA 误差项的回归模型对该数据集进行拟合。
+```{r}
+# a.使用tslm()函数，将包含分段时间趋势的谐波回归模型拟合到整个gasoline数据。通过 最小化 AICc 和 CV 值来选择傅里叶项数。
+autoplot(gasoline)   # 2007年和2013年似乎可以作为拐点
+
+ts_info(gasoline)  # 周度数据
+
+t2 <- time(gasoline)
+tk2 <- 2007
+tk3 <- 2013
+
+t_pw2 <- ts(pmax(0, t2 - tk2), start = t2[1], frequency = 365.25/7)
+t_pw3 <- ts(pmax(0, t2 - tk3), start = t2[1], frequency = 365.25/7)
+
+# 首先设置AICc值和傅里叶项数k，将通过一个for循环来寻找最小AICc值
+AICc <- Inf
+k_num <- 0
+
+for(num in c(1:24)){   # 这里选择24是因为最大循环数要小于52.18的一半
+  gasoline_tslm <- tslm(gasoline ~ trend + t_pw2 + t_pw3 + fourier(gasoline, K = num))
+  AICc_value <- CV(gasoline_tslm)["AICc"]
+  
+  if(AICc > AICc_value){
+    AICc <- AICc_value
+  }else{
+    k_num <- num
+    break
+  }
+}
+
+k_num     # 最小的傅里叶项数为fourier(gasoline, K = 11)
+AICc     # 最小AICc=-3799.761 
+
+autoplot(gasoline) +
+  geom_line(color = "gray") +
+  autolayer(gasoline_tslm$fitted.values)    # 拟合值的趋势与真实值很相似
+
+# b.使用auto.arima()函数重新拟合出一个允许存在自相关误差的模型。其预测变量和tslm()函数中的预测变量相同。
+# gasoline_autoarima <- auto.arima(gasoline, xreg = cbind(t2=t2, t_pw2=t_pw2,  t_pw3=t_pw3, Fourier = fourier(gasoline, K = 11)))
+# 处理速度太慢了，因此决定手动选一个。 ARIMA(4, 0, 2)(1, 0, 0)[52] error
+gasoline_ARIMA_402100 <- Arima(gasoline, order = c(4,0,2), seasonal = c(1,0,0), 
+                               xreg = cbind(t2=t2, t_pw2=t_pw2,  t_pw3=t_pw3, Fourier = fourier(gasoline, K = 11)))
+
+# c.使用checkresiduals()函数检验最终模型的残差。残差项是否为一个白噪声？若不是，请尝试修改模型或者删除前几年的数据。
+checkresiduals(gasoline_ARIMA_402100)   # 非白噪声
+
+ts_info(gasoline)
+# 删除90s的年份，从2000年开始
+gasoline_from2000 <- window(gasoline, start = c(2000,1))
+t2_from2000 <- window(t2, start = c(2000,1))
+t_pw2_from2000 <- window(t_pw2, start = c(2000,1))
+t_pw3_from2000 <- window(t_pw3, start = c(2000,1))
+
+# 重新选AICc和傅里叶项数
+AICc <- Inf
+k_num <- 0
+
+for(num in c(1:24)){   # 这里选择24是因为最大循环数要小于52.18的一半
+  gasoline_from_tslm <- tslm(gasoline_from2000 ~ trend + t_pw2_from2000 + t_pw3_from2000 + fourier(gasoline_from2000, K = num))
+  AICc_value <- CV(gasoline_from_tslm)["AICc"]
+  
+  if(AICc > AICc_value){
+    AICc <- AICc_value
+  }else{
+    k_num <- num
+    break
+  }
+}
+
+AICc  # -2655.069
+k_num  # 11
+
+autoplot(gasoline_from2000) +
+  geom_line(color = "gray") +
+  autolayer(gasoline_from_tslm$fitted.values)
+
+# 用autoarima寻找一个合适的模型
+gasoline_from2000_autoarima <- auto.arima(gasoline_from2000, xreg = cbind(t2_from2000=t2_from2000, 
+                                                                          t_pw2_from2000=t_pw2_from2000,
+                                                                          t_pw3_from2000=t_pw3_from2000, 
+                                                                          Fourier =fourier(gasoline_from2000, K = 11)))
+gasoline_from2000_autoarima  # ARIMA(2,0,2)(1,0,0)[52] errors
+
+# d.若模型的残差项为一个白噪声，利用该模型预测未来一年的数据。
+checkresiduals(gasoline_from2000_autoarima)  # 依然不是白噪声序列，尽管如此，还是使用该模型进行预测
+
+h = 52
+t_new <- t2_from2000[length(t2_from2000)] + seq(h)/365.25
+t_pw2.new <- t_pw2_from2000[length(t_pw2_from2000)] + seq(h)/365.25
+t_pw3.new <- t_pw3_from2000[length(t_pw3_from2000)] + seq(h)/365.25
+
+xreg_new <- cbind(
+  t = t_new, 
+  t_pw1 = t_pw2.new, 
+  t_pw2 = t_pw3.new,
+  Fourier = fourier(
+    gasoline_from2000, K = 11, h = h
+    )
+  )
+
+
+fc_gasoline_from2000_autoarima <- forecast(
+  gasoline_from2000_autoarima,
+  xreg = xreg_new,
+  h = h
+)
+
+autoplot(fc_gasoline_from2000_autoarima)
+
+accuracy(fc_gasoline_from2000_autoarima) # RMSE=0.2033092
+
+```
+# 6.对于前几章中讨论过的零售时间序列：
+```{r}
+# a.使用包含傅里叶项的动态回归模型。傅里叶项数数量使用 AIC 准则选择。（需要使用先前确定的同样的 Box-Cox 变换）
+retail <- read.xlsx("D:/Chrome Download/retail.xlsx", 
+                    sheetIndex = 1, 
+                    startRow = 2)
+retail_ts <- ts(retail[,"A3349873A"], 
+                frequency=12, 
+                start=c(1982,4))
+
+autoplot(retail_ts)
+
+retail_lambda <- BoxCox.lambda(retail_ts)
+
+# 一样的，利用函数得出最小AIC和傅里叶项数
+ts_info(retail_ts)
+
+AIC <- Inf
+k_num <- 0
+
+for(num in c(1:6)){   # 这里选择6是因为最大循环数要小于12的一半
+  retail_ts_tslm <- tslm(retail_ts ~ trend + fourier(retail_ts, K = num), lambda = retail_lambda)
+  AIC_value <- CV(retail_ts_tslm)["AIC"]
+  
+  if(AIC > AIC_value){
+    AIC <- AIC_value
+    k_num <- num
+  }
+}
+
+AIC   # -905.5713 
+k_num   # 6
+
+# 建模--谐波回归
+retail_ts_tslm <- tslm(retail_ts ~ trend + fourier(retail_ts, K = 6), lambda = retail_lambda)
+
+autoplot(retail_ts) +
+  autolayer(retail_ts_tslm$fitted.values)   # 季节性几乎一致
+
+# 建模--动态回归
+retail_ts_autoarima <- auto.arima(retail_ts, lambda = retail_lambda, 
+                                  xreg = cbind(time = time(retail_ts),
+                                               fourier = fourier(retail_ts, K = 6)))
+
+
+retail_ts_autoarima   # ARIMA(1,0,3)(1,0,1)[12] errors 
+
+autoplot(retail_ts) +
+  autolayer(retail_ts_autoarima$fitted)   # 趋势与季节性拟合的非常好
+
+# b.检验模型的误差项。误差项是否为一白噪声？
+checkresiduals(retail_ts_autoarima)   # 非白噪声序列
+
+# 调整参数重新拟合
+retail_ts_autoarima_paremeter <- auto.arima(retail_ts, lambda = retail_lambda, 
+                                  xreg = cbind(time = time(retail_ts),
+                                               fourier = fourier(retail_ts, K = 6)), stepwise = FALSE, approximation = FALSE)
+
+checkresiduals(retail_ts_autoarima_paremeter)  # 依然不是白噪声序列，但将使用该模型进行下一步的预测
+
+# c.将预测结果与之前模型的预测结果进行比较。
+t3 <- time(retail_ts)
+
+fc_retail_ts_autoarima_paremeter <- forecast(retail_ts_autoarima_paremeter, h = 36, xreg = cbind(time = t3[length(t3)] + seq(36)/12,
+                                               fourier = fourier(retail_ts, K = 6, h = 36)))
+
+autoplot(fc_retail_ts_autoarima_paremeter)
+
+accuracy(fc_retail_ts_autoarima_paremeter)  # RMSE = 13.67954
+```
+
