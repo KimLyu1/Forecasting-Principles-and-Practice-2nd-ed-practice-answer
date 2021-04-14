@@ -1,0 +1,162 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# 1.写出澳大利亚旅游分层和澳大利亚监狱分组结构的S矩阵。使用 smatrix 命令验证你的答案。
+```{r}
+library(fpp2)
+library(hts)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(TSstudio)
+
+ts_info(visnights)
+head(visnights)
+
+
+
+tourism.hts <- hts(visnights, characters = c(3, 5))     # 第一层级是州，第二层级是地区
+str(tourism.hts)    # 20个节点，三个层级，第一层级有6个节点。  那么矩阵大小应该是 1 + 6 + 20 行， 20列
+
+# 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+# 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 1
+# 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0
+# 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1
+
+# 用smatrix函数计算
+smatrix(tourism.hts)
+
+
+prison.gts <- gts(prison/1e3, characters = c(3,1,9),
+  gnames = c("State", "Gender", "Legal",
+             "State*Gender", "State*Legal",
+             "State*Gender*Legal"))
+
+
+str(prison.gts)     # 实在太复杂了，不想手算，直接用函数了
+smatrix(prison.gts)
+
+```
+
+# 2.使用ARIMA模型为澳大利亚国内旅游数据 visnights 生成8步向前的自下而上预测。按层次绘制出一致预测并评论其性质。你对这些预测满意吗？
+```{r}
+fc_visnights <- forecast(tourism.hts, method="bu", fmethod="arima", h = 8)
+fc_visnights
+
+tourism.hts %>% aggts(levels=0:1) %>%
+  autoplot(facet=TRUE) +
+  autolayer(fc_visnights %>% aggts(levels=0:1)) + 
+  xlab("年份") + ylab("百万") +
+  ggtitle("游客过夜数")
+#  捕捉到了一定得趋势与季节性
+```
+
+
+
+
+# 3.使用ARIMA模型对澳大利亚国内旅游数据visnights的总体序列进行建模。评论模型。生成并绘制ARIMA模型的8步向前预测，并将这些预测与题2中生成的自下而上的预测进行比较。
+```{r}
+# 总体层级
+plot(fc_visnights, levels = 0, color_lab = TRUE)
+title(main = "Total visitor nights")
+
+# 第一层级
+plot(fc_visnights, levels = 1, color_lab = TRUE)
+title(main = "Group by states")        # NSW基本能维持最多的游客数量，除了某些时刻，例如h=3时，也就是2016年第三季度时。
+                                       # 有的州存在季节性，但有的没有。例如WAU和OTH
+
+# 第二层级
+plot(fc_visnights, levels = 2, color_lab = TRUE)
+title(main = "Group by zones")               # 最多人去的地方是QLDMetro
+```
+
+# 4.使用ARIMA模型对澳大利亚国内旅游数据visnights进行基础预测，生成8步向前最优调和的一致预测。按层次绘制出一致预测并评论其性质。这些与上述题2中产生的自下而上预测有何不同之处，并解释其原因。
+```{r}
+# 聚合时间序列
+visnights %>% rowSums() %>% ts(frequency = 4, start = 1998) -> visnights_total
+str(visnights_total)
+
+# 建模
+visnights_total_autoarima <- auto.arima(visnights_total)
+
+autoplot(visnights_total) +
+  autolayer(visnights_total_autoarima$fitted)
+
+# 预测
+fc_visnights_total_autoarima <- forecast(visnights_total_autoarima, h = 8)
+fc_visnights_total_autoarima$model    # ARIMA(0,1,1)(0,1,1)[4]已选择
+
+# get ts object of bottom-up forecasts.
+visnights_total_bu <- ts(
+  rowSums(fc_visnights$bts), 
+  start = 2017, 
+  frequency = 4)
+
+autoplot(fc_visnights_total_autoarima) +
+  autolayer(visnights_total_bu, series = "自下而上")
+
+```
+
+# 5.使用过去两年的澳大利亚国内旅游数据 visnights 作为测试集，生成自下而上，自上而下和最优调和的预测，并比较它们的准确性。
+```{r}
+train <- window(visnights, end = 2015)
+test <- window(visnights, start = 2015)
+
+train.hts <- hts(train, characters = c(3, 5))
+test.hts <- hts(test, characters = c(3, 5))
+
+# 自下而上 bu
+fc_bu <- forecast(train.hts, method="bu", fmethod="arima")
+
+autoplot(fc_bu %>% aggts(levels=0:1)) + 
+  autolayer(test.hts %>% aggts(levels=0:1), series = "actual", colour = 000000)
+  
+
+# 自上而下
+fc_tdgsa <- forecast(train.hts, method="tdgsa", fmethod="arima")
+
+autoplot(fc_tdgsa %>% aggts(levels=0:1)) + 
+  autolayer(test.hts %>% aggts(levels=0:1), series = "actual", colour = 000000)
+
+# 最优调和
+train %>% rowSums() %>% ts(frequency = 4, end = 2015) -> train_total
+train_autoarima <- auto.arima(train_total)
+
+fc_optimal <- forecast(train_autoarima)
+fc_optimal$model     # ARIMA(1,0,0)(1,1,0)[4] 已选择
+
+autoplot(fc_optimal) + 
+  autolayer(test.hts %>% aggts(levels=0), series = "actual")
+
+# 比较
+fc_optimal
+fc_bu %>% aggts(levels=0)
+fc_tdgsa %>% aggts(levels=0)
+test.hts %>% aggts(levels=0)
+```
+
