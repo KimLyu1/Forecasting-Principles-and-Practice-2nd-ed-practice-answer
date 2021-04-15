@@ -1,0 +1,96 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(fpp2)
+library(data.table)
+library(xlsx)
+library(vars)
+library(foreach)
+library(doParallel)
+workers <- makeCluster(4) # My computer has 4 cores
+registerDoParallel(workers)
+```
+
+
+
+# 1.使用tbats()函数对零售时间序列数据进行建模。
+```{r}
+# a.检查残差并进行预测。
+retaildata <- readxl::read_excel("D:/Chrome Download/retail.xlsx", skip=1)
+retail <- ts(retaildata[,"A3349873A"], frequency=12, start=c(1982,4))
+
+
+# 建模
+retail_tbats <- tbats(retail)
+# 检查残差
+checkresiduals(retail_tbats)   # 非白噪声序列
+# 预测
+fc_retail_tbats <- forecast(retail_tbats)
+autoplot(fc_retail_tbats)
+
+retail_new <- read.xlsx("D:/Chrome Download/8501011.xls", 
+                        sheetName = "Data1", 
+                        startRow = 10)
+retail_new_ts <- ts(retail_new[, "A3349873A"],
+                    start = c(1982, 4),
+                    frequency = 12)
+retail_new.test <- subset(
+  retail_new_ts,
+  start = length(retail) + 1
+  )
+
+
+accuracy(fc_retail_tbats, retail_new.test)
+
+# b.这种完全自动化的方法是否对这些数据也适用？
+# 从图中看起来是十分合理的预测。
+
+# c.您是否通过使用傅里叶项而不是季节差分来保留自由度？
+retail_tbats
+# TBATS(0.126, {5, 0}, 1, {<12, 5>})
+# TBATS(lambda, {p, q}, damping, {<freq, num of terms>})
+# alpha - level(lt) smoothing parameter
+# beta - trend(bt) smoothing parameter
+# gamma1 - seasonal level(sj,t) smoothing parameter
+# gamma2 - seasonal growth(s*j,t) smoothing parameter
+# j - Fourier term(j times of base frequency)
+
+# 在这里需要对比之前用傅里叶项和其他方法的结果。
+```
+
+# 2.考虑美国成品汽油产品的周供应量（百万桶/天）（gasoline序列）：
+```{r}
+# a.根据数据拟合 TBATS 模型。
+gasoline %>% autoplot
+
+# 拟合模型
+gasoline %>% tbats() -> gasoline_tbats
+
+
+# b.检查残差并进行预测。
+checkresiduals(gasoline_tbats)    # 非白噪声，模型自由度为28
+
+fc_gasoline_tbats <- forecast(gasoline_tbats)
+
+autoplot(fc_gasoline_tbats)
+
+# c.您能否使用我们在本书中提到的方法对这些数据进行建模？
+# 我觉得和第九章第4题一样，动态回归模型是最适合数据的。我之所以这么认为，是因为回归模型可以处理数据中的分段趋势，ARIMA模型可以很好地拟合残差。
+```
+# 3.尝试使用nnetar()对零售数据和我们在前面几章中使用过的其他数据进行建模。
+```{r}
+autoplot(retail)
+
+# nnetar
+retail_nnetar <- nnetar(retail)
+retail_nnetar   # NNAR(3,1,2)[12] 
+
+fc_retail_nnetar <- forecast(retail_nnetar)
+autoplot(fc_retail_nnetar)
+
+accuracy(fc_retail_nnetar, retail_new.test)  # 神经网络的这一算法是准确率最高的
+```
+
